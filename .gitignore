@@ -1,0 +1,51 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Environment
+.env
+.retrobard_cache
+
+# IDEs
+.vscode/
+
+# Packaging
+packaging/build/
+
+# ROMs, disc images, saves and archives: never commit games
+*.sfc
+*.smc
+*.fig
+*.swc
+*.nes
+*.fds
+*.gb
+*.gbc
+*.gba
+*.n64
+*.z64
+*.v64
+*.gen
+*.smd
+*.sms
+*.gg
+*.pce
+*.iso
+*.cue
+*.chd
+*.srm
+*.sav
+*.state
+*.zip
+*.7z
+*.rar
+
+# Custom voice server settings (running from source)
+custom_tts.json

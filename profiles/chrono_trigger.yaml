@@ -1,0 +1,112 @@
+game_id: chrono_trigger
+window:
+  process_name: snes9x-x64.exe
+ocr:
+  region:
+    x: 0.1102
+    y: 0.596
+    w: 0.7802
+    h: 0.3354
+  speaker_region:
+    x: 0.1145
+    y: 0.6131
+    w: 0.1081
+    h: 0.0626
+  upscale_factor: 4
+  binary_threshold: 148
+  speaker_binary_threshold: 187
+  cursor_mask_ratio: 0.1
+  debounce_ms: 200
+dialogue_rules:
+  speaker_delimiter: ':'
+  strip_patterns:
+  - ^[\*\-]+\s*
+  min_length: 2
+controls:
+  enabled: true
+  skip_keys:
+  - z
+  - x
+  - space
+  - enter
+  skip_gamepad_buttons:
+  - 0
+  - 1
+  cooldown_ms: 250
+voices:
+  default_narrator: pNInz6obpgDQGcFmaJgB
+  characters:
+    CRONO: JBFqnCBsd6RMkjVDRZzb
+    FROG: kzoxjYFQafNtwvtRruG8
+    MOM: pFZP5JQG7iQjIQuC4Bku
+    CHANCELLOR:
+      voice_id: N2lVS1w4EtoT3dr4eOWO
+      stability: 0.3
+      similarity_boost: 0.55
+      style: 0.6
+      speed: 1.15
+      pitch_semitones: 0.0
+      effect: none
+      use_speaker_boost: true
+    ROBO:
+      voice_id: N2lVS1w4EtoT3dr4eOWO
+      stability: 0.95
+      similarity_boost: 0.75
+      style: 0.0
+      speed: 0.95
+      pitch_semitones: -0.5
+      effect: robot
+      use_speaker_boost: true
+    MARLE:
+      voice_id: EXAVITQu4vr4xnSDxMaL
+      stability: 0.35
+      similarity_boost: 0.8
+      style: 0.4
+      speed: 1.08
+      pitch_semitones: 0.0
+      effect: none
+      use_speaker_boost: true
+    LUCCA:
+      voice_id: EXAVITQu4vr4xnSDxMaL
+      stability: 0.65
+      similarity_boost: 0.6
+      style: 0.15
+      speed: 1.14
+      pitch_semitones: 0.0
+      effect: none
+      use_speaker_boost: true
+    GATO:
+      voice_id: N2lVS1w4EtoT3dr4eOWO
+      stability: 0.85
+      similarity_boost: 0.75
+      style: 0.0
+      speed: 0.92
+      pitch_semitones: -3.5
+      effect: robot
+      use_speaker_boost: true
+    YAKRA:
+      voice_id: N2lVS1w4EtoT3dr4eOWO
+      stability: 0.35
+      similarity_boost: 0.75
+      style: 0.0
+      speed: 0.85
+      pitch_semitones: -5.0
+      effect: monster
+      use_speaker_boost: true
+    IMP:
+      voice_id: N2lVS1w4EtoT3dr4eOWO
+      stability: 0.35
+      similarity_boost: 0.75
+      style: 0.0
+      speed: 1.12
+      pitch_semitones: 4.0
+      effect: none
+      use_speaker_boost: true
+  female_pool:
+  - EXAVITQu4vr4xnSDxMaL
+  - XB0fDUnXU5powFXDhCwa
+  - XrExE9yKIg1WjnnlVkGX
+  male_pool:
+  - JBFqnCBsd6RMkjVDRZzb
+  - N2lVS1w4EtoT3dr4eOWO
+  - TX3LPaxmHKxFdv7VOQHJ

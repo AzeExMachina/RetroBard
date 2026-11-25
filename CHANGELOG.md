@@ -10,6 +10,14 @@ app's "Check for updates" window shows.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-25
+
+### Added
+- "What's new" button in the About window and the tray menu. It shows this
+  changelog, read from the copy shipped with the app, so it works offline.
+- After an update, RetroBard says once (in a tray notification) that it was updated;
+  clicking the notification opens "What's new". A first install shows nothing.
+
 ## [0.3.0] - 2026-11-25
 
 ### Added
@@ -55,7 +63,8 @@ First public version.
 - Chrono Trigger profile and taught font for snes9x.
 - Windows tester package built with PyInstaller.
 
-[Unreleased]: https://github.com/AzeExMachina/RetroBard/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/AzeExMachina/RetroBard/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/AzeExMachina/RetroBard/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/AzeExMachina/RetroBard/compare/176c2df...v0.3.0
 [0.2.2]: https://github.com/AzeExMachina/RetroBard/compare/3ac7c42...176c2df
 [0.2.1]: https://github.com/AzeExMachina/RetroBard/tree/3ac7c42

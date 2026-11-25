@@ -40,6 +40,7 @@ from retrobard.gui.quick_start import QuickStartDialog, app_settings, should_sho
 from retrobard.gui.setup_page import SetupPage
 from retrobard.gui.state import AppState, StatusBridge
 from retrobard.gui.updater import Updater
+from retrobard.gui.whats_new import WhatsNewDialog, updated_since_last_run
 from retrobard.paths import is_frozen, user_data_dir
 
 GAME_NAME_RE = re.compile(r"[^a-z0-9_]+")
@@ -76,6 +77,9 @@ class MainWindow(QMainWindow):
         super().__init__()
         # Per-user window preferences, such as hiding the quick start guide
         self.ui_settings = ui_settings or app_settings()
+        # Read before the quick start guide can save its choice on a first install
+        self.was_updated = updated_since_last_run(self.ui_settings)
+        self._announced = False  # the "updated" balloon is showing
         self.setWindowTitle(f"RetroBard {__version__}")
         self.setWindowIcon(make_icon())
         self.resize(980, 680)
@@ -177,7 +181,32 @@ class MainWindow(QMainWindow):
         QuickStartDialog(self.ui_settings, self).exec()
 
     def show_about(self) -> None:
-        AboutDialog(self, check_updates=self.updater.check).exec()
+        AboutDialog(
+            self, check_updates=self.updater.check, show_whats_new=self.show_whats_new
+        ).exec()
+
+    def show_whats_new(self) -> None:
+        WhatsNewDialog(self).exec()
+
+    def announce_update(self) -> None:
+        """Says once that RetroBard was updated, with a way to see what changed."""
+        if not self.was_updated:
+            return
+        self.was_updated = False
+        if self.tray is not None:
+            self._announced = True
+            self.tray.showMessage(
+                f"RetroBard was updated to {__version__}",
+                "Click here to see what's new.",
+                QSystemTrayIcon.MessageIcon.Information,
+                10000,
+            )
+        else:
+            self.statusBar().showMessage(
+                f"RetroBard was updated to {__version__}. About > What's new lists the "
+                "changes.",
+                20000,
+            )
 
     def show_quick_start_if_wanted(self) -> None:
         if should_show(self.ui_settings):
@@ -193,6 +222,8 @@ class MainWindow(QMainWindow):
         self.tray_toggle.triggered.connect(self.play_page.toggle)
         show_action = QAction("Show window", self)
         show_action.triggered.connect(self.show_window)
+        whats_new_action = QAction("What's new", self)
+        whats_new_action.triggered.connect(self.show_whats_new)
         about_action = QAction("About", self)
         about_action.triggered.connect(self.show_about)
         update_action = QAction("Check for updates", self)
@@ -203,16 +234,25 @@ class MainWindow(QMainWindow):
         menu.addAction(show_action)
         menu.addSeparator()
         menu.addAction(about_action)
+        menu.addAction(whats_new_action)
         menu.addAction(update_action)
         menu.addAction(quit_action)
         self.tray.setContextMenu(menu)
         self._tray_menu = menu  # keep it alive
         self.tray.activated.connect(self._on_tray_activated)
+        # The only balloon that offers anything to click is the "updated" one
+        self.tray.messageClicked.connect(self._on_tray_message_clicked)
         self.tray.show()
 
     def _on_tray_activated(self, reason) -> None:
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
             self.show_window()
+
+    def _on_tray_message_clicked(self) -> None:
+        if self._announced:
+            self._announced = False
+            self.show_window()
+            self.show_whats_new()
 
     def _on_running_changed(self, running: bool) -> None:
         icon = make_icon(active=running)
@@ -236,6 +276,7 @@ class MainWindow(QMainWindow):
             # Keep voicing the game; the window comes back from the tray icon
             event.ignore()
             self.hide()
+            self._announced = False
             self.tray.showMessage(
                 "RetroBard is still running",
                 "Use the tray icon to show the window, stop, or quit.",
@@ -343,6 +384,7 @@ def main() -> int:
     window.show()
     # After the window is on screen, so the guide opens on top of it
     QTimer.singleShot(0, window.show_quick_start_if_wanted)
+    QTimer.singleShot(0, window.announce_update)
     # Without a tray there is no other way back to a hidden window, so closing quits
     if window.tray is None:
         app.setQuitOnLastWindowClosed(True)

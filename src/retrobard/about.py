@@ -35,6 +35,7 @@ PRIVACY_SUMMARY = (
     "server on your own computer keeps it there, an online service follows its own "
     "terms. Spoken lines are "
     "cached on your PC in %APPDATA%\\RetroBard\\cache; you can clear them on the Options "
-    "tab. RetroBard has no accounts, telemetry or servers, and sends nothing to the "
-    "developer."
+    "tab. The \"Check for updates\" button asks GitHub for the latest version, only "
+    "when you press it; RetroBard never checks on its own. RetroBard has no accounts, "
+    "telemetry or servers, and sends nothing to the developer."
 )

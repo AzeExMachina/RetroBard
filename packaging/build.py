@@ -23,7 +23,7 @@ WORK = HERE / "build"
 DIST = ROOT / "dist"
 LICENSES = HERE / "licenses"
 # Copied next to RetroBard.exe
-PROJECT_NOTICES = ("LICENSE", "NOTICE", "PRIVACY.md")
+PROJECT_NOTICES = ("LICENSE", "NOTICE", "PRIVACY.md", "CHANGELOG.md")
 
 # Games, disc images, saves and archives that must never be shipped
 ROM_EXTENSIONS = frozenset({
@@ -220,7 +220,7 @@ def write_third_party_notices(folder: Path) -> Path:
 
 
 def copy_project_notices(folder: Path) -> None:
-    """LICENSE, NOTICE and PRIVACY.md from the repository go next to RetroBard.exe."""
+    """LICENSE, NOTICE, PRIVACY.md and CHANGELOG.md go next to RetroBard.exe."""
     for name in PROJECT_NOTICES:
         shutil.copyfile(ROOT / name, folder / name)
 

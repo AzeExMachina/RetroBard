@@ -39,6 +39,7 @@ from retrobard.gui.play_page import PlayPage
 from retrobard.gui.quick_start import QuickStartDialog, app_settings, should_show
 from retrobard.gui.setup_page import SetupPage
 from retrobard.gui.state import AppState, StatusBridge
+from retrobard.gui.updater import Updater
 from retrobard.paths import is_frozen, user_data_dir
 
 GAME_NAME_RE = re.compile(r"[^a-z0-9_]+")
@@ -81,6 +82,8 @@ class MainWindow(QMainWindow):
 
         self.state = AppState(settings)
         self.bridge = StatusBridge()
+        self.updater = Updater(self)
+        self.updater.restart_requested.connect(self.quit)
 
         self.game_combo = QComboBox()
         self.game_combo.setMinimumWidth(220)
@@ -174,7 +177,7 @@ class MainWindow(QMainWindow):
         QuickStartDialog(self.ui_settings, self).exec()
 
     def show_about(self) -> None:
-        AboutDialog(self).exec()
+        AboutDialog(self, check_updates=self.updater.check).exec()
 
     def show_quick_start_if_wanted(self) -> None:
         if should_show(self.ui_settings):
@@ -192,12 +195,15 @@ class MainWindow(QMainWindow):
         show_action.triggered.connect(self.show_window)
         about_action = QAction("About", self)
         about_action.triggered.connect(self.show_about)
+        update_action = QAction("Check for updates", self)
+        update_action.triggered.connect(self.updater.check)
         quit_action = QAction("Quit", self)
         quit_action.triggered.connect(self.quit)
         menu.addAction(self.tray_toggle)
         menu.addAction(show_action)
         menu.addSeparator()
         menu.addAction(about_action)
+        menu.addAction(update_action)
         menu.addAction(quit_action)
         self.tray.setContextMenu(menu)
         self._tray_menu = menu  # keep it alive

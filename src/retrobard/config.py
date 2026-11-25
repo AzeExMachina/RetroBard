@@ -156,16 +156,20 @@ class VoicesConfig(BaseModel):
     characters: dict[str, str | CharacterVoiceConfig] = Field(default_factory=dict)
     female_pool: list[str] = Field(
         default_factory=lambda: [
-            "EXAVITQu4vr4xnSDxMaL",  # Sarah
-            "XB0fDUnXU5powFXDhCwa",  # Charlotte
-            "XrExE9yKIg1WjnnlVkGX",  # Matilda
+            "OZ0L6eISlOejga3XjDFt",  # Talia
+            "dvbL7qkNGZY1IqPGZAjM",  # Elowen
+            "QtY3JBOUKEB5xzrRfOKc",  # Maisie
+            "BFd5oBc2DDna33pSi4Gf",  # Alicia
+            "M6N6IdXhi5YNZyZSDe7k",  # Amanda
         ]
     )
     male_pool: list[str] = Field(
         default_factory=lambda: [
-            "JBFqnCBsd6RMkjVDRZzb",  # George
-            "N2lVS1w4EtoT3dr4eOWO",  # Callum
-            "TX3LPaxmHKxFdv7VOQHJ",  # Liam
+            "6WwXjDDEMyNmFG95zycZ",  # Eldrin
+            "fs2OqxduwXgp9foh2xjK",  # Callum (Husky Trickster)
+            "ktkP7Nsj67dw2zcplQYt",  # Lawrence
+            "10NkTYmU7tSz3Kkl3Lex",  # Kaelen
+            "FrS6cKLB1wg4WYgPa9GW",  # Wyatt
         ]
     )
 

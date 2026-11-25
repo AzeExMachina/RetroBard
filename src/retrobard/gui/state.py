@@ -5,6 +5,7 @@
 from PySide6.QtCore import QObject, Signal
 
 from retrobard.app import setup
+from retrobard.app.profile_updates import update_profiles
 from retrobard.config import AppSettings
 from retrobard.domain.status import StatusEvent
 from retrobard.paths import install_default_profiles
@@ -32,8 +33,10 @@ class AppState(QObject):
     def __init__(self, settings: AppSettings | None = None):
         super().__init__()
         self.settings = settings or AppSettings()
-        # The packaged app starts with the game profiles shipped with it
+        # The packaged app starts with the game profiles shipped with it, and
+        # profiles from an earlier version get the voice updates of this one
         install_default_profiles(self.settings.bundled_profiles_dir, self.settings.profiles_dir)
+        update_profiles(self.settings.bundled_profiles_dir, self.settings.profiles_dir)
         games = self.games()
         self.game: str = games[0] if games else ""
 

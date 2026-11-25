@@ -157,7 +157,8 @@ class LettersPage(QWidget):
 
         self.collect_button.clicked.connect(self.toggle_collecting)
         self.save_button.clicked.connect(self.save_letters)
-        self.export_button.clicked.connect(self.export_letters)
+        # clicked passes a `checked` bool; keep it away from `destination`.
+        self.export_button.clicked.connect(lambda: self.export_letters())
         self._progress.connect(self.progress_label.setText)
         self._collected.connect(self.show_frames)
         state.game_changed.connect(lambda _game: self.load_game())

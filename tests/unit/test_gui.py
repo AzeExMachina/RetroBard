@@ -479,3 +479,64 @@ class TestUpdates:
         assert calls == [1]
         dialog.close()
         assert AboutDialog(window).update_button.isHidden()
+
+
+class TestWhatsNew:
+    @staticmethod
+    def _settings(tmp_path: Path) -> QSettings:
+        return QSettings(str(tmp_path / "seen.ini"), QSettings.Format.IniFormat)
+
+    def test_first_install_says_nothing(self, tmp_path: Path) -> None:
+        from retrobard.gui.whats_new import updated_since_last_run
+
+        settings = self._settings(tmp_path)
+        assert not updated_since_last_run(settings, "0.3.1")
+        assert not updated_since_last_run(settings, "0.3.1")
+
+    def test_announces_an_update_once(self, tmp_path: Path) -> None:
+        from retrobard.gui.whats_new import updated_since_last_run
+
+        settings = self._settings(tmp_path)
+        updated_since_last_run(settings, "0.3.1")
+        assert updated_since_last_run(settings, "0.3.2")
+        assert not updated_since_last_run(settings, "0.3.2")
+        # Going back to an older version is not an update
+        assert not updated_since_last_run(settings, "0.3.1")
+
+    def test_users_of_versions_before_0_3_1_are_told(self, tmp_path: Path) -> None:
+        from retrobard.gui.quick_start import HIDE_KEY
+        from retrobard.gui.whats_new import updated_since_last_run
+
+        settings = self._settings(tmp_path)
+        settings.setValue(HIDE_KEY, False)
+        assert updated_since_last_run(settings, "0.3.1")
+
+    def test_dialog_shows_the_shipped_changelog(self, window: MainWindow) -> None:
+        from retrobard import __version__
+        from retrobard.gui.whats_new import WhatsNewDialog
+
+        text = WhatsNewDialog(window).text()
+        assert f"{__version__}" in text and "this version" in text
+        assert "Unreleased" not in text
+
+    def test_dialog_without_the_file(self, window: MainWindow, tmp_path: Path) -> None:
+        from retrobard.gui.whats_new import WhatsNewDialog
+
+        text = WhatsNewDialog(window, path=tmp_path / "missing.md").text()
+        assert "was not found" in text
+
+    def test_about_dialog_has_the_button(self, window: MainWindow) -> None:
+        from retrobard.gui.about_dialog import AboutDialog
+
+        calls = []
+        dialog = AboutDialog(window, show_whats_new=lambda: calls.append(1))
+        assert not dialog.whats_new_button.isHidden()
+        dialog.whats_new_button.click()
+        assert calls == [1]
+        dialog.close()
+        assert AboutDialog(window).whats_new_button.isHidden()
+
+    def test_a_fresh_window_announces_nothing(self, window: MainWindow) -> None:
+        assert not window.was_updated
+        window.announce_update()
+        assert not window._announced

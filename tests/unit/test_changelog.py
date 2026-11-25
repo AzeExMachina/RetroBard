@@ -70,3 +70,26 @@ def test_changelog_has_the_current_version(notes) -> None:
     text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     assert notes.versions(text)[0] == "Unreleased"
     assert notes.section(text, __version__), f"CHANGELOG.md has no [{__version__}] section"
+
+
+def test_released_skips_unreleased_and_keeps_dates() -> None:
+    from retrobard.changelog import released
+
+    items = released(SAMPLE)
+    assert [(e.version, e.date) for e in items] == [("1.1.0", "2026-12-01"), ("1.0.0", "2026-11-01")]
+    assert items[0].notes == "### Fixed\n- A bug."
+
+
+def test_markdown_marks_the_running_version() -> None:
+    from retrobard.changelog import as_markdown, released
+
+    text = as_markdown(released(SAMPLE), current="1.0.0")
+    assert "## 1.1.0 (2026-12-01)\n" in text
+    assert "## 1.0.0 (2026-11-01) - this version" in text
+    assert "Unreleased" not in text and "example.com" not in text
+
+
+def test_app_finds_the_changelog_from_source() -> None:
+    from retrobard.changelog import changelog_path
+
+    assert changelog_path() == ROOT / "CHANGELOG.md"

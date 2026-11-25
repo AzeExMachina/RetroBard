@@ -54,6 +54,7 @@ class AboutDialog(QDialog):
         self,
         parent: QWidget | None = None,
         check_updates: Callable[[], None] | None = None,
+        show_whats_new: Callable[[], None] | None = None,
     ):
         super().__init__(parent)
         self.setWindowTitle(f"About {APP_NAME}")
@@ -97,10 +98,14 @@ class AboutDialog(QDialog):
         self.update_button = QPushButton("Check for updates")
         self.update_button.setToolTip("Asks GitHub whether a newer RetroBard is available.")
         self.update_button.setVisible(check_updates is not None)
+        self.whats_new_button = QPushButton("What's new")
+        self.whats_new_button.setToolTip("The changes in each version of RetroBard.")
+        self.whats_new_button.setVisible(show_whats_new is not None)
         self.close_button = QPushButton("Close")
         self.close_button.setDefault(True)
         buttons = QHBoxLayout()
         buttons.addWidget(self.update_button)
+        buttons.addWidget(self.whats_new_button)
         buttons.addWidget(self.licenses_button)
         buttons.addWidget(self.about_qt_button)
         buttons.addStretch(1)
@@ -109,6 +114,8 @@ class AboutDialog(QDialog):
 
         if check_updates is not None:
             self.update_button.clicked.connect(check_updates)
+        if show_whats_new is not None:
+            self.whats_new_button.clicked.connect(show_whats_new)
         self.licenses_button.clicked.connect(self.show_licenses)
         self.about_qt_button.clicked.connect(lambda: QMessageBox.aboutQt(self))
         self.close_button.clicked.connect(self.accept)

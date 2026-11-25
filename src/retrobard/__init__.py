@@ -3,4 +3,4 @@
 """RetroBard: Real-time AI voice acting pipeline for retro RPGs."""
 
 # Keep in step with pyproject.toml (a test checks it)
-__version__ = "0.3.0"
+__version__ = "0.3.1"

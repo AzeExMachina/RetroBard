@@ -1,6 +1,6 @@
 [project]
 name = "retrobard"
-version = "0.3.0"
+version = "0.3.1"
 description = "Real-time AI voice acting for retro games: reads a game's dialogue box and speaks it."
 readme = "README.md"
 license = "GPL-3.0-or-later"

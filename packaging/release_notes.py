@@ -8,30 +8,14 @@ Exits with an error when CHANGELOG.md has no section for that version, so a
 release cannot go out without its notes.
 """
 
-import re
 import sys
 from pathlib import Path
 
+from retrobard.changelog import section, versions
+
+__all__ = ["main", "section", "versions"]
+
 CHANGELOG = Path(__file__).resolve().parents[1] / "CHANGELOG.md"
-HEADING_RE = re.compile(r"^## \[(?P<version>[^\]]+)\]", re.MULTILINE)
-LINK_RE = re.compile(r"^\[[^\]]+\]: \S+\s*$", re.MULTILINE)
-
-
-def versions(text: str) -> list[str]:
-    """The section names in order, e.g. ["Unreleased", "0.2.2", "0.2.1"]."""
-    return [match["version"] for match in HEADING_RE.finditer(text)]
-
-
-def section(text: str, version: str) -> str | None:
-    """The body of one version's section (without its heading), or None."""
-    headings = list(HEADING_RE.finditer(text))
-    for index, match in enumerate(headings):
-        if match["version"] != version:
-            continue
-        end = headings[index + 1].start() if index + 1 < len(headings) else len(text)
-        body = LINK_RE.sub("", text[match.end():end].split("\n", 1)[-1])
-        return body.strip()
-    return None
 
 
 def main(argv: list[str]) -> int:

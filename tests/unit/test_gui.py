@@ -388,3 +388,94 @@ class TestVoiceCache:
         assert cache.count() == 0
         assert "0 lines, 0.0 MB" in options.cache_label.text()
 
+
+
+class TestUpdates:
+    """The "Check for updates" flow, with GitHub replaced by a fake answer."""
+
+    @staticmethod
+    def _updater(window: MainWindow, tmp_path: Path, tag: str, frozen: bool):
+        import httpx
+
+        from retrobard.app import updates
+        from retrobard.gui.updater import Updater
+
+        release = {
+            "tag_name": tag,
+            "body": "New voices for Frog.",
+            "html_url": "https://github.com/x/releases/tag/" + tag,
+            "assets": [{
+                "name": f"RetroBard-{tag[1:]}-windows.zip",
+                "browser_download_url": "https://github.com/x/RetroBard.zip",
+                "size": 10,
+                "digest": "sha256:" + "0" * 64,
+            }],
+        }
+        requests = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(str(request.url))
+            return httpx.Response(200, json=release)
+
+        app = tmp_path / "RetroBard"
+        app.mkdir(exist_ok=True)
+        (app / "RetroBard.exe").write_bytes(b"exe")
+        updater = Updater(
+            window,
+            client_factory=lambda: httpx.Client(transport=httpx.MockTransport(handler)),
+            frozen=lambda: frozen,
+            folder=lambda: app,
+        )
+        boxes = []
+        updater._show = boxes.append  # read the message boxes instead of showing them
+        opened = []
+        updater._open = opened.append
+        return updater, boxes, requests, updates
+
+    def test_nothing_is_checked_until_asked(self, window: MainWindow, tmp_path: Path) -> None:
+        _, boxes, requests, _ = self._updater(window, tmp_path, "v99.0.0", frozen=True)
+        assert requests == [] and boxes == []
+
+    def test_says_when_up_to_date(self, qapp, window: MainWindow, tmp_path: Path) -> None:
+        from retrobard import __version__
+
+        updater, boxes, requests, updates = self._updater(
+            window, tmp_path, f"v{__version__}", frozen=True
+        )
+        updater.check()
+        assert _wait_for(qapp, lambda: boxes)
+        assert requests == [updates.LATEST_RELEASE_API]
+        assert "latest version" in boxes[0].text()
+        assert not updater.busy
+
+    def test_offers_a_newer_version(self, qapp, window: MainWindow, tmp_path: Path) -> None:
+        updater, boxes, _, _ = self._updater(window, tmp_path, "v99.0.0", frozen=True)
+        updater.check()
+        assert _wait_for(qapp, lambda: boxes)
+        box = boxes[0]
+        assert "99.0.0 is available" in box.text()
+        assert "New voices for Frog." in box.informativeText()
+        labels = [button.text() for button in box.buttons()]
+        assert "Download and install" in labels and "Open download page" in labels
+        assert not updater.busy  # closed without a choice: "Later"
+
+    def test_from_source_only_links_the_page(
+        self, qapp, window: MainWindow, tmp_path: Path
+    ) -> None:
+        updater, boxes, _, _ = self._updater(window, tmp_path, "v99.0.0", frozen=False)
+        updater.check()
+        assert _wait_for(qapp, lambda: boxes)
+        box = boxes[0]
+        assert "git pull" in box.informativeText()
+        assert "Download and install" not in [button.text() for button in box.buttons()]
+
+    def test_about_dialog_has_the_button(self, window: MainWindow) -> None:
+        from retrobard.gui.about_dialog import AboutDialog
+
+        calls = []
+        dialog = AboutDialog(window, check_updates=lambda: calls.append(1))
+        assert not dialog.update_button.isHidden()
+        dialog.update_button.click()
+        assert calls == [1]
+        dialog.close()
+        assert AboutDialog(window).update_button.isHidden()

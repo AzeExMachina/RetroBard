@@ -1,0 +1,91 @@
+# Builds the Windows package when a version tag is pushed, publishes it as a GitHub
+# Release (where the app's "Check for updates" button looks) and pushes the same
+# build to itch.io with butler.
+#
+#   git tag v0.2.3
+#   git push origin v0.2.3
+#
+# The release notes (which the update dialog shows) are the "## [0.2.3]" section of
+# CHANGELOG.md; the release stops if it is missing. The tag must match the version
+# in pyproject.toml and src/retrobard/__init__.py.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write  # create the release
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      ITCH_TARGET: aze-ex-machina/retrobard:windows
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Check the tag matches the app version
+        id: version
+        shell: pwsh
+        run: |
+          $version = uv run --no-sync python -c "import retrobard; print(retrobard.__version__)"
+          $tag = "${{ github.ref_name }}"
+          if ($tag -ne "v$version") {
+            Write-Error "Tag $tag does not match the app version $version. Bump the version first."
+            exit 1
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Read release notes from CHANGELOG.md
+        run: uv run --no-sync python packaging/release_notes.py ${{ steps.version.outputs.version }} > release-notes.md
+
+      - name: Run tests
+        run: uv run --no-sync pytest -q
+
+      - name: Build
+        run: uv run --no-sync python packaging/build.py
+
+      - name: Write checksum
+        id: files
+        shell: pwsh
+        run: |
+          $zip = "dist/RetroBard-${{ steps.version.outputs.version }}-windows.zip"
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  $(Split-Path $zip -Leaf)" | Out-File "$zip.sha256" -Encoding ascii -NoNewline
+          "zip=$zip" >> $env:GITHUB_OUTPUT
+
+      - name: Publish GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $zip = "${{ steps.files.outputs.zip }}"
+          gh release create "${{ github.ref_name }}" $zip "$zip.sha256" `
+            --title "RetroBard ${{ steps.version.outputs.version }}" `
+            --notes-file release-notes.md
+
+      - name: Push to itch.io
+        shell: pwsh
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: |
+          if (-not $env:BUTLER_API_KEY) {
+            Write-Host "BUTLER_API_KEY is not set: skipping the itch.io upload."
+            exit 0
+          }
+          Invoke-WebRequest "https://broth.itch.zone/butler/windows-amd64/LATEST/archive/default" -OutFile butler.zip
+          Expand-Archive butler.zip -DestinationPath butler
+          ./butler/butler.exe -V
+          ./butler/butler.exe push dist/RetroBard $env:ITCH_TARGET `
+            --userversion "${{ steps.version.outputs.version }}"

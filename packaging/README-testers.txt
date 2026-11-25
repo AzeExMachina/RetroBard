@@ -46,8 +46,17 @@ YOUR PRIVACY
   its own terms.
 - Your keys are kept in Windows Credential Manager. Spoken lines are cached in
   %APPDATA%\RetroBard\cache; you can clear them on the Options tab.
-- Apart from the voice service you choose, nothing is sent anywhere, and nothing
-  is ever sent to me.
+- "Check for updates" asks GitHub for the latest version, only when you press it.
+- Apart from the voice service you choose and that button, nothing is sent
+  anywhere, and nothing is ever sent to me.
+
+
+UPDATING
+--------
+Press "About" -> "Check for updates" (also in the tray icon's menu). If a new
+version is out, RetroBard can download it, close, replace its own folder and start
+again. Your settings, letters and cache in %APPDATA%\RetroBard are kept.
+If you installed RetroBard with the itch.io app, update it from the itch.io app.
 
 
 SENDING BACK LETTERS YOU TAUGHT

@@ -3,6 +3,7 @@
 """The About dialog: who made RetroBard, its license, privacy summary and credits."""
 
 import sys
+from collections.abc import Callable
 from html import escape
 from pathlib import Path
 
@@ -49,7 +50,11 @@ def _link(label: str, url: str) -> str:
 
 
 class AboutDialog(QDialog):
-    def __init__(self, parent: QWidget | None = None):
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        check_updates: Callable[[], None] | None = None,
+    ):
         super().__init__(parent)
         self.setWindowTitle(f"About {APP_NAME}")
         self.setMinimumWidth(480)
@@ -88,15 +93,22 @@ class AboutDialog(QDialog):
 
         self.licenses_button = QPushButton("Third-party licenses")
         self.about_qt_button = QPushButton("About Qt")
+        # Contacts GitHub only when pressed; RetroBard never checks on its own
+        self.update_button = QPushButton("Check for updates")
+        self.update_button.setToolTip("Asks GitHub whether a newer RetroBard is available.")
+        self.update_button.setVisible(check_updates is not None)
         self.close_button = QPushButton("Close")
         self.close_button.setDefault(True)
         buttons = QHBoxLayout()
+        buttons.addWidget(self.update_button)
         buttons.addWidget(self.licenses_button)
         buttons.addWidget(self.about_qt_button)
         buttons.addStretch(1)
         buttons.addWidget(self.close_button)
         layout.addLayout(buttons)
 
+        if check_updates is not None:
+            self.update_button.clicked.connect(check_updates)
         self.licenses_button.clicked.connect(self.show_licenses)
         self.about_qt_button.clicked.connect(lambda: QMessageBox.aboutQt(self))
         self.close_button.clicked.connect(self.accept)

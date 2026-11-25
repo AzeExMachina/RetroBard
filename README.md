@@ -167,6 +167,32 @@ Testers enter their own ElevenLabs key with the "ElevenLabs key..." button on th
 Play tab; it is stored in Windows Credential Manager. `ELEVENLABS_API_KEY` in the
 environment or `.env` still takes precedence.
 
+## Releasing a new version
+
+While working, note each user-visible change under `## [Unreleased]` in
+`CHANGELOG.md`. To release:
+
+1. Bump the version in `pyproject.toml` and `src/retrobard/__init__.py`, then run `uv lock`.
+2. In `CHANGELOG.md`, rename `## [Unreleased]` to `## [0.2.3] - <date>`, start a new
+   empty `## [Unreleased]` above it, and update the links at the bottom. A test checks
+   the current version has a section.
+3. Commit, then tag and push the tag:
+
+   ```git tag v0.2.3```
+
+   ```git push origin v0.2.3```
+
+`.github/workflows/release.yml` then checks the tag matches the version, takes the
+release notes from that version's `CHANGELOG.md` section, runs the tests, builds the zip, publishes a GitHub Release with the zip and its `.sha256`,
+and pushes the build to itch.io with butler (channel `windows`). The itch.io step
+needs a `BUTLER_API_KEY` repository secret and is skipped without it.
+
+The app's "Check for updates" button (About window and tray menu) reads the latest
+GitHub Release only when pressed. It downloads the zip, checks its SHA-256, unpacks
+it next to the app folder, and a PowerShell script swaps the folders once the app
+has closed (keeping the old one if that fails; log in `%APPDATA%\RetroBard\logs\update.log`).
+Copies installed by the itch.io app are left to the itch.io app.
+
 ## Merging letters from testers
 
 Testers export the letters they taught from the Letters tab ("Export letters...").

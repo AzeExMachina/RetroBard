@@ -9,4 +9,7 @@ its models unless you opt out in your ElevenLabs account (Terms and Privacy > Da
 With a custom voice server on, the dialogue text is sent to the server address you entered:
 a server on your own computer keeps it there, an online service follows its own terms.
 Spoken lines are cached on your PC in %APPDATA%\RetroBard\cache; you can clear them on the
-Options tab. RetroBard has no accounts, telemetry or servers, and sends nothing to the developer.
+Options tab. The "Check for updates" button (About window and tray menu) asks GitHub for the
+latest version and, if you choose to install it, downloads it from GitHub; this happens only
+when you press it, RetroBard never checks on its own. RetroBard has no accounts, telemetry or
+servers, and sends nothing to the developer.

@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Davide Aldegheri
 # SPDX-License-Identifier: GPL-3.0-or-later
+import dataclasses
 import queue
 import re
 import threading
@@ -7,12 +8,19 @@ import time
 import traceback
 from difflib import SequenceMatcher
 
-from retrobard.domain.models import AudioEffect, DialogueEvent, EventType
-from retrobard.domain.parser import DialogueParser
-from retrobard.domain.ports import AudioCache, AudioPlayer, TTSProvider
+from retrobard.domain.models import AudioEffect, DialogueEvent, EventType, VoiceProfile
+from retrobard.domain.parser import DialogueParser, ParsedDialogue
+from retrobard.domain.ports import (
+    AudioCache,
+    AudioPlayer,
+    TTSProvider,
+    VoiceUnavailableError,
+)
 from retrobard.domain.status import StatusKind, StatusSink, console_status, report
 
 _NUMBER_RE = re.compile(r"\d+")
+# Silence between two characters talking in the same box
+SPEAKER_PAUSE_S = 0.2
 
 
 class VoiceOrchestrator:
@@ -39,9 +47,14 @@ class VoiceOrchestrator:
         self.stop_grace_period_s = stop_grace_period_s
         # Added to cache keys so audio in one format is never played as another
         self.audio_tag = audio_tag
+        # Voice problems already told to the user this session
+        self._voice_problems: set[str] = set()
 
         self._event_queue: queue.Queue[tuple[DialogueEvent | None, int | None]] = queue.Queue()
         self._last_spoken_text = ""
+        # (speaker, text) of each part of the box spoken last, to tell a box that
+        # grew (a second character added below) from a new one
+        self._last_parts: list[tuple[str, str]] = []
         self._last_speak_start = 0.0
 
         # Every spoken line gets a number. A line is cancelled once its number is
@@ -85,6 +98,11 @@ class VoiceOrchestrator:
                 return
             try:
                 self._handle_event(event, line)
+            except VoiceUnavailableError as error:
+                # Said once per voice: every line in that voice would repeat it
+                if str(error) not in self._voice_problems:
+                    self._voice_problems.add(str(error))
+                    report(self.status, StatusKind.ERROR, f"[VOICE] {error}")
             except Exception:  # noqa: BLE001 - one bad line must not stop the queue
                 report(
                     self.status,
@@ -106,12 +124,13 @@ class VoiceOrchestrator:
             # The dialogue box closed, so the same line may legitimately recur
             self.parser.reset_context()
             self._last_spoken_text = ""
+            self._last_parts = []
 
     def _handle_speak(self, event: DialogueEvent, line: int | None = None) -> None:
         # Always parse, even a line that was already skipped: who is speaking
         # carries over to the following boxes.
-        parsed = self.parser.parse(event.raw_text, event.explicit_speaker)
-        if not parsed:
+        parts = self.parser.parse_all(event.raw_text, event.explicit_speaker)
+        if not parts:
             if self.log_text:
                 report(
                     self.status,
@@ -120,10 +139,18 @@ class VoiceOrchestrator:
                 )
             return
 
+        spoken_parts = [(p.speaker, p.clean_text) for p in parts]
+        whole_text = " ".join(text for _, text in spoken_parts)
         # Only OCR re-reads the same box; other sources send each line on purpose
-        if event.source == "ocr" and self._is_duplicate(parsed.clean_text):
-            return
-        self._last_spoken_text = parsed.clean_text
+        if event.source == "ocr":
+            if self._is_duplicate(whole_text):
+                return
+            # A box that grew keeps its first parts: say only what was added
+            parts = parts[self._parts_already_spoken(spoken_parts) :]
+            if not parts:
+                return
+        self._last_spoken_text = whole_text
+        self._last_parts = spoken_parts
 
         if self._is_cancelled(line):
             report(
@@ -134,8 +161,24 @@ class VoiceOrchestrator:
             )
             return
 
+        for index, parsed in enumerate(parts):
+            if self._is_cancelled(line):
+                return
+            # Later characters wait for the one before to finish talking
+            self._speak_part(parsed, line, after_previous=index > 0)
+
+    def _parts_already_spoken(self, parts: list[tuple[str, str]]) -> int:
+        """How many leading parts of `parts` match the box spoken last."""
+        count = 0
+        for (speaker, text), (last_speaker, last_text) in zip(parts, self._last_parts):
+            if speaker != last_speaker or not self._same_line(text, last_text):
+                break
+            count += 1
+        return count
+
+    def _speak_part(self, parsed: ParsedDialogue, line: int | None, after_previous: bool) -> None:
         voice = parsed.voice
-        voice_sig = voice.signature() + self.audio_tag
+        voice_sig = self._voice_signature(voice)
         text_part = (
             f"Text={parsed.clean_text!r}" if self.log_text else f"{len(parsed.clean_text)} chars"
         )
@@ -156,6 +199,8 @@ class VoiceOrchestrator:
             cached=bool(cached_audio),
         )
         if cached_audio:
+            if after_previous and not self._wait_for_previous(line):
+                return
             if not self._is_cancelled(line):
                 self.player.play_bytes(
                     cached_audio, pitch_semitones=voice.pitch_semitones, effect=voice.effect
@@ -163,10 +208,12 @@ class VoiceOrchestrator:
             return
 
         # Pitch shifting and effects need the whole clip, so only plain voices can
-        # start playing while the audio is still arriving.
+        # start playing while the audio is still arriving. A later character's
+        # part is fetched whole while the one before is still talking.
         needs_whole_clip = abs(voice.pitch_semitones) >= 0.05 or voice.effect != AudioEffect.NONE
         begin_stream = getattr(self.player, "begin_stream", None)
-        stream_id = begin_stream() if begin_stream and not needs_whole_clip else None
+        can_stream = begin_stream is not None and not needs_whole_clip and not after_previous
+        stream_id = begin_stream() if can_stream else None
 
         audio = bytearray()
         for chunk in self.tts.synthesize_stream(parsed.clean_text, voice):
@@ -184,17 +231,51 @@ class VoiceOrchestrator:
 
         if not audio or self._is_cancelled(line):
             return
+        # The voice service may have spoken it in another voice (see _voice_signature)
+        voice_sig = self._voice_signature(voice)
         self.cache.put(self.game_id, parsed.speaker, parsed.clean_text, voice_sig, bytes(audio))
         if stream_id is None:
+            if after_previous and not self._wait_for_previous(line):
+                return
             self.player.play_bytes(
                 bytes(audio), pitch_semitones=voice.pitch_semitones, effect=voice.effect
             )
+
+    def _wait_for_previous(self, line: int | None) -> bool:
+        """Waits until the player has finished the part before, plus a short
+        pause. False if the line was skipped meanwhile."""
+        is_busy = getattr(self.player, "is_busy", None)
+        if is_busy is not None:
+            while is_busy():
+                if self._is_cancelled(line):
+                    return False
+                time.sleep(0.05)
+        deadline = time.monotonic() + SPEAKER_PAUSE_S
+        while time.monotonic() < deadline:
+            if self._is_cancelled(line):
+                return False
+            time.sleep(0.02)
+        return not self._is_cancelled(line)
+
+    def _voice_signature(self, voice: VoiceProfile) -> str:
+        """Cache key for a line in `voice`, filed under the voice that really
+        speaks it, so audio from a stand-in voice is not played once the
+        original voice works again (e.g. after upgrading a plan)."""
+        actual_voice_id = getattr(self.tts, "actual_voice_id", None)
+        if actual_voice_id is not None:
+            voice = dataclasses.replace(voice, voice_id=actual_voice_id(voice.voice_id))
+        return voice.signature() + self.audio_tag
 
     def _is_duplicate(self, text: str) -> bool:
         """True if `text` is a noisy re-read of the box that was just spoken."""
         if not self._last_spoken_text:
             return False
+        return self._same_line(text, self._last_spoken_text)
+
+    @staticmethod
+    def _same_line(text: str, other: str) -> bool:
+        """True if `text` is `other` read again, allowing for OCR noise."""
         # "Got 200 G!" and "Got 300 G!" are different lines, not OCR jitter
-        if _NUMBER_RE.findall(text) != _NUMBER_RE.findall(self._last_spoken_text):
+        if _NUMBER_RE.findall(text) != _NUMBER_RE.findall(other):
             return False
-        return SequenceMatcher(None, text, self._last_spoken_text).ratio() > 0.88
+        return SequenceMatcher(None, text, other).ratio() > 0.88

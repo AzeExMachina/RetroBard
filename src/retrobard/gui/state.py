@@ -30,7 +30,7 @@ class AppState(QObject):
     # Emitted after a profile or font was saved, so other pages can reload
     game_data_saved = Signal(str)
 
-    def __init__(self, settings: AppSettings | None = None):
+    def __init__(self, settings: AppSettings | None = None, last_game: str = ""):
         super().__init__()
         self.settings = settings or AppSettings()
         # The packaged app starts with the game profiles shipped with it, and
@@ -38,7 +38,8 @@ class AppState(QObject):
         install_default_profiles(self.settings.bundled_profiles_dir, self.settings.profiles_dir)
         update_profiles(self.settings.bundled_profiles_dir, self.settings.profiles_dir)
         games = self.games()
-        self.game: str = games[0] if games else ""
+        # The game used last time, if its profile is still there; else the first one
+        self.game: str = last_game if last_game in games else (games[0] if games else "")
 
     def games(self) -> list[str]:
         return setup.list_games(self.settings)

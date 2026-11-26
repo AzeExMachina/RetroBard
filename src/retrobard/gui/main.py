@@ -44,6 +44,8 @@ from retrobard.gui.whats_new import WhatsNewDialog, updated_since_last_run
 from retrobard.paths import is_frozen, user_data_dir
 
 GAME_NAME_RE = re.compile(r"[^a-z0-9_]+")
+# Window preference: the game selected last, opened again at startup
+LAST_GAME_KEY = "last_game"
 
 
 def make_icon(active: bool = False) -> QIcon:
@@ -84,7 +86,7 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(make_icon())
         self.resize(980, 680)
 
-        self.state = AppState(settings)
+        self.state = AppState(settings, last_game=str(self.ui_settings.value(LAST_GAME_KEY, "") or ""))
         self.bridge = StatusBridge()
         self.updater = Updater(self)
         self.updater.restart_requested.connect(self.quit)
@@ -127,6 +129,7 @@ class MainWindow(QMainWindow):
         self.about_button.clicked.connect(self.show_about)
         self.state.games_changed.connect(self._fill_games)
         self.state.game_changed.connect(self._show_selected_game)
+        self.state.game_changed.connect(lambda game: self.ui_settings.setValue(LAST_GAME_KEY, game))
         self.play_page.teach_requested.connect(lambda: self.tabs.setCurrentWidget(self.letters_page))
         self.play_page.running_changed.connect(self._on_running_changed)
         self.setup_page.guide_requested.connect(self.show_quick_start)

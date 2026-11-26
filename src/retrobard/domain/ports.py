@@ -23,6 +23,11 @@ class TTSProvider(Protocol):
     def synthesize_stream(self, text: str, voice: VoiceProfile) -> Iterator[bytes]: ...
 
 
+class VoiceUnavailableError(Exception):
+    """The voice service refused a voice (for example, the user's plan does not
+    include it). The message is written for the user; no traceback is needed."""
+
+
 class AudioCache(Protocol):
     """Stores and retrieves synthesized audio by content signature."""
     def get(self, game_id: str, speaker: str, text: str, voice_id: str) -> bytes | None: ...

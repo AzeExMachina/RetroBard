@@ -9,12 +9,18 @@ import pytest
 from retrobard.adapters.ocr.glyph_reader import (
     GlyphFont,
     GlyphReader,
+    find_picture,
     fix_lookalikes,
+    fix_shared_i_and_l,
     picture_box,
     text_mask,
     to_native,
 )
-from retrobard.adapters.ocr.teacher import teach_font
+from retrobard.adapters.ocr.teacher import (
+    collect_dialogue_frames,
+    prepare_teaching,
+    teach_font,
+)
 from retrobard.config import NormRect, OcrConfig
 
 NATIVE_W, NATIVE_H = 256, 224
@@ -60,6 +66,28 @@ def _draw(lines: list[str], extra: dict[str, tuple[int, list[str]]] | None = Non
     return frame
 
 
+def _bordered(native: np.ndarray, zoom: int, size: tuple[int, int]) -> np.ndarray:
+    """The native frame drawn at a whole-number zoom, centred in a black window."""
+    width, height = size
+    picture = cv2.resize(native, None, fx=zoom, fy=zoom, interpolation=cv2.INTER_NEAREST)
+    window = np.zeros((height, width, 4), dtype=np.uint8)
+    top, left = (height - picture.shape[0]) // 2, (width - picture.shape[1]) // 2
+    window[top : top + picture.shape[0], left : left + picture.shape[1]] = picture
+    return window
+
+
+def _see_through(frame: np.ndarray, phase: int = 0) -> np.ndarray:
+    """A dithered see-through box: every other pixel is bright scenery (pale
+    green, lighter than the box but not white), touching the white letters.
+    `phase` animates the scenery, like water moving behind the box."""
+    frame = frame.copy()
+    rows, cols = np.indices(frame.shape[:2])
+    scenery = ((rows + cols) % 2 == 0) & (frame[..., 0] < 255)
+    colours = np.array([(165, 182, 148), (140, 215, 231), (156, 255, 255)], dtype=np.uint8)
+    frame[scenery, :3] = colours[(rows[scenery] // 3 + cols[scenery] // 5 + phase) % 3]
+    return frame
+
+
 def _taught_font(tmp_path: Path, frames: list[np.ndarray], answers: list[str]) -> GlyphFont:
     font = GlyphFont()
     replies = iter(answers)
@@ -96,6 +124,63 @@ class TestGeometry:
         recovered = to_native(window, _cfg())
 
         assert np.array_equal(recovered >= 160, native[..., :3].max(axis=2) >= 160)
+
+    def test_picture_drawn_at_whole_zoom_inside_a_black_border_is_found(self, tmp_path: Path) -> None:
+        font = _teach_alphabet(tmp_path)
+        window = _bordered(_draw(["ABC CAB", "BA.C"]), zoom=4, size=(1415, 1010))
+
+        assert find_picture(window, _cfg()) == ((1415 - 1024) // 2, (1010 - 896) // 2, 4.0, 4.0)
+        assert GlyphReader(_cfg(), font).read(window).text == "ABC CAB\nBA.C"
+
+    def test_picture_is_found_when_its_bottom_edge_is_dark(self, tmp_path: Path) -> None:
+        font = _teach_alphabet(tmp_path)
+        native = _draw(["ABC CAB", "BA.C"])
+        native[200:, :, :3] = 0  # a black cave floor along the bottom of the scene
+        window = _bordered(native, zoom=4, size=(1415, 991))
+
+        assert find_picture(window, _cfg()) == ((1415 - 1024) // 2, (991 - 896) // 2, 4.0, 4.0)
+        assert GlyphReader(_cfg(), font).read(window).text == "ABC CAB\nBA.C"
+
+    def test_picture_is_found_when_dark_on_two_sides(self, tmp_path: Path) -> None:
+        font = _teach_alphabet(tmp_path)
+        native = _draw(["ABC CAB", "BA.C"])
+        native[:, 220:, :3] = 0  # the room ends before the right edge
+        native[200:, :, :3] = 0  # and the floor below is black
+        window = _bordered(native, zoom=4, size=(1415, 991))
+
+        assert find_picture(window, _cfg()) == ((1415 - 1024) // 2, (991 - 896) // 2, 4.0, 4.0)
+        assert GlyphReader(_cfg(), font).read(window).text == "ABC CAB" + chr(10) + "BA.C"
+
+    def test_a_lone_box_on_a_black_screen_is_not_taken_for_the_picture(self) -> None:
+        window = np.zeros((991, 1415, 4), dtype=np.uint8)
+        window[400:600, 300:1115, :3] = 90  # centred left to right, edges far from the picture's
+
+        assert find_picture(window, _cfg()) is None
+
+    def test_a_dark_scene_does_not_move_the_picture(self) -> None:
+        window = np.zeros((1010, 1415, 4), dtype=np.uint8)
+        window[600:700, 900:1300, :3] = 200  # something lit on one side only
+
+        assert find_picture(window, _cfg()) is None
+
+    def test_a_picture_filling_the_window_keeps_the_usual_position(self) -> None:
+        # 256x224 fitted into 1415x990 is 1131 pixels wide, with 142-pixel bars
+        window = np.full((990, 1415, 4), 60, dtype=np.uint8)
+        window[:, :142] = 0
+        window[:, 1415 - 142 :] = 0
+
+        assert find_picture(window, _cfg()) == picture_box(1415, 990, _cfg())
+
+    def test_a_wrong_guess_from_a_dark_frame_is_corrected(self) -> None:
+        from retrobard.adapters.ocr.glyph_reader import PictureLocator
+
+        window = np.full((990, 1415, 4), 60, dtype=np.uint8)
+        window[:, :142] = 0
+        window[:, 1415 - 142 :] = 0
+        locator = PictureLocator(_cfg())
+        locator._found[(1415, 990)] = (195.0, 47.0, 4.0, 4.0)  # an odd earlier guess
+
+        assert locator.locate(window) == picture_box(1415, 990, _cfg())
 
     def test_box_borders_are_not_treated_as_letters(self) -> None:
         gray = _draw(["AB"])[..., :3].max(axis=2)
@@ -261,3 +346,142 @@ class TestTeachingPlan:
         plan = prepare_teaching(_cfg(), GlyphFont(), [_draw(["AB", ""]), scene])
 
         assert (plan.frames_used, plan.frames_left_out) == (1, 1)
+
+
+class TestSeeThroughBox:
+    def test_letters_over_scenery_are_found_only_as_white_pixels(self) -> None:
+        frame = _see_through(_draw(["ABC CAB", "BA.C"]))
+        white = _cfg().model_copy(update={"text_color": "white"})
+
+        assert not GlyphReader(_cfg(), GlyphFont()).is_text(frame)
+        assert GlyphReader(white, GlyphFont()).is_text(frame)
+
+    def test_collecting_switches_to_white_letters_before_any_is_taught(self) -> None:
+        frame = _see_through(_draw(["ABC CAB", "BA.C"]))
+        cfg = _cfg()
+
+        frames = collect_dialogue_frames(
+            _StillSource(frame), cfg, 1, echo=lambda _: None, choose_text_color=True
+        )
+
+        assert len(frames) == 1
+        assert cfg.text_color == "white"
+
+    def test_collecting_keeps_the_colour_once_letters_are_taught(self) -> None:
+        frame = _see_through(_draw(["ABC CAB", "BA.C"]))
+        cfg = _cfg()
+        polls = iter(range(30))
+
+        frames = collect_dialogue_frames(
+            _StillSource(frame),
+            cfg,
+            1,
+            echo=lambda _: None,
+            should_stop=lambda: next(polls, None) is None,
+        )
+
+        assert frames == []
+        assert cfg.text_color == "bright"
+
+
+    def test_scenery_moving_behind_the_box_does_not_stop_collecting(self) -> None:
+        native = _draw(["ABC CAB", "BA.C"])
+        cfg = _cfg()
+
+        frames = collect_dialogue_frames(
+            _AnimatedSource([_see_through(native, phase) for phase in range(3)]),
+            cfg,
+            1,
+            echo=lambda _: None,
+            choose_text_color=True,
+        )
+
+        assert len(frames) == 1
+        assert cfg.text_color == "white"
+
+    def test_pale_scenery_specks_are_not_letters(self) -> None:
+        frame = _see_through(_draw(["ABC CAB", "BA.C"]))
+        white = _cfg().model_copy(update={"text_color": "white"})
+        font = GlyphFont()
+
+        plan = prepare_teaching(white, font, [frame])
+
+        assert font.line_pitch == LINE_TOPS[1] - LINE_TOPS[0]
+        assert len(plan.shapes) == 4  # A, B, C and the full stop, no scenery
+
+
+    def test_reading_aloud_works_while_scenery_moves_behind_the_box(self, tmp_path: Path) -> None:
+        import time
+
+        from retrobard.adapters.producers.ocr_watcher import OcrWatcher
+
+        white = _cfg().model_copy(update={"text_color": "white", "cursor_mask_ratio": 0.0})
+        font = GlyphFont()
+        for char in SHAPES:
+            frame = _draw([f"{char} {char}", f"{char}{char}"])
+            teach_font(white, font, tmp_path / "f.json", [frame], ask=lambda _, c=char: c, echo=lambda _: None)
+        native = _draw(["ABC CAB", "BA.C"])
+        source = _AnimatedSource([_see_through(native, phase) for phase in range(3)])
+        events = []
+        watcher = OcrWatcher(white, source, glyph_reader=GlyphReader(white, font), status=lambda *a, **k: None)
+
+        watcher.start(events.append)
+        deadline = time.monotonic() + 5
+        while not events and time.monotonic() < deadline:
+            time.sleep(0.05)
+        watcher.stop()
+
+        assert [e.raw_text for e in events][:1] == ["ABC CAB\nBA.C"]
+
+
+class _AnimatedSource:
+    def __init__(self, frames: list[np.ndarray]):
+        self.frames = frames
+        self.n = 0
+
+    def grab(self) -> np.ndarray:
+        self.n += 1
+        return self.frames[self.n % len(self.frames)]
+
+
+class _StillSource:
+    def __init__(self, frame: np.ndarray):
+        self.frame = frame
+
+    def grab(self) -> np.ndarray:
+        return self.frame
+
+
+class TestSharedIAndL:
+    @pytest.mark.parametrize(
+        "read, expected",
+        [
+            ("I'II heIp you!", "I'll help you!"),
+            ("The viIIage is this way", "The village is this way"),
+            ("RANDI:Hey!", "RANDI:Hey!"),
+            ("It is I.", "It is I."),
+            # A word starting with l, mid-sentence and after a wrapped line
+            ("Read the Ietter.", "Read the letter."),
+            ("Watch out for the\nIittle ones!", "Watch out for the\nlittle ones!"),
+            # At the start of a sentence it is a capital I
+            ("Stop! It is here. If you\nIook, run.", "Stop! It is here. If you\nlook, run."),
+            ("MAN:It's Iate.", "MAN:It's late."),
+        ],
+    )
+    def test_one_shape_taught_as_capital_i(self, read: str, expected: str) -> None:
+        assert fix_shared_i_and_l(read, {"I", "e", "h", "p"}) == expected
+
+    @pytest.mark.parametrize(
+        "read, expected",
+        [
+            ("l'm here", "I'm here"),
+            ("RANDl:Hey!", "RANDI:Hey!"),
+            ("all well", "all well"),
+            ("lt is late. lf you look", "It is late. If you look"),
+        ],
+    )
+    def test_one_shape_taught_as_lowercase_l(self, read: str, expected: str) -> None:
+        assert fix_shared_i_and_l(read, {"l", "e", "h"}) == expected
+
+    def test_fonts_with_both_shapes_are_left_alone(self) -> None:
+        assert fix_shared_i_and_l("McIntyre", {"I", "l"}) == "McIntyre"

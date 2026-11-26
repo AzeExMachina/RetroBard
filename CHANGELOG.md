@@ -10,6 +10,43 @@ app's "Check for updates" window shows.
 
 ## [Unreleased]
 
+### Added
+- RetroBard opens the game you used last. If that game's profile is gone, it
+  opens the first game in the list.
+- When two characters talk in the same dialogue box ("RANDI:..." then
+  "POPOI:..." on a later line), each is spoken in their own voice, one after the
+  other. If the game adds the second character to a box already spoken, only the
+  new part is said.
+
+### Changed
+- Every voice RetroBard ships is now an ElevenLabs Infinity voice, which
+  ElevenLabs never retires (apart from voices designed for one character). The
+  narrator stays Adam, in his Infinity version. With a paid ElevenLabs plan you can
+  still pick any Voice Library voice in your game profile.
+- Profiles still using the retiring Adam or Bella voices are moved to their
+  Infinity versions at startup.
+
+### Fixed
+- Collecting dialogue on the Letters tab now works in games whose text box is
+  see-through, with scenery showing between the letters (such as Secret of Mana).
+  RetroBard notices this the first time you collect and reads only the white
+  letter pixels for that game. Reading aloud on the Play tab works for these
+  boxes too, even while scenery moves behind them.
+- Letters are read correctly when the emulator draws the game at a whole-number
+  zoom with a black border around it, instead of filling the window, also in
+  dark scenes where part of the picture's edge is black.
+- Speaker names written flush against the text ("MAN:Hang on!") are recognised,
+  so those lines are spoken instead of skipped.
+- In games that draw capital I and lowercase l the same way, words like
+  "I'll", "help", "village" and "letter" are read with the right letter.
+- Words starting with a capital I, such as "Its", "Into" or "Instead", are no
+  longer split into "I ts" and similar.
+- Free ElevenLabs plans cannot use Voice Library voices through the API. When a
+  replacement voice is refused, the Default voice it replaced speaks instead (these
+  work on free plans until ElevenLabs removes them on 31 December 2026), with one
+  notice saying so. A voice that cannot be used at all now gives one clear message
+  instead of an error report on every line.
+
 ## [0.3.1] - 2026-11-25
 
 ### Added
@@ -65,6 +102,6 @@ First public version.
 
 [Unreleased]: https://github.com/AzeExMachina/RetroBard/compare/v0.3.1...HEAD
 [0.3.1]: https://github.com/AzeExMachina/RetroBard/compare/v0.3.0...v0.3.1
-[0.3.0]: https://github.com/AzeExMachina/RetroBard/compare/176c2df...v0.3.0
-[0.2.2]: https://github.com/AzeExMachina/RetroBard/compare/3ac7c42...176c2df
-[0.2.1]: https://github.com/AzeExMachina/RetroBard/tree/3ac7c42
+[0.3.0]: https://github.com/AzeExMachina/RetroBard/compare/v0.2.2...v0.3.0
+[0.2.2]: https://github.com/AzeExMachina/RetroBard/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/AzeExMachina/RetroBard/releases/tag/v0.2.1

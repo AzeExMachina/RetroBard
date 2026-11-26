@@ -160,3 +160,21 @@ class TestUpdateProfiles:
 
     def test_missing_folder(self, tmp_path: Path) -> None:
         assert update_profiles(None, tmp_path / "nowhere") == []
+
+
+class TestShippedVoicesStayAvailable:
+    """Default voices stop working on 2026-12-31: nothing RetroBard ships may use one."""
+
+    def test_new_games_use_no_retired_voice(self) -> None:
+        from retrobard.app.setup import DEFAULT_NARRATOR_VOICE
+
+        pools = VoicesConfig(default_narrator=DEFAULT_NARRATOR_VOICE)
+        used = {pools.default_narrator, *pools.female_pool, *pools.male_pool}
+
+        assert not used & set(RETIRED_VOICES)
+
+    def test_shipped_profiles_use_no_retired_voice(self) -> None:
+        shipped = Path(__file__).resolve().parents[2] / "profiles"
+        for path in shipped.glob("*.yaml"):
+            voices = GameProfile.from_yaml(path).voices
+            assert replace_retired_voices(voices) == 0, path.name

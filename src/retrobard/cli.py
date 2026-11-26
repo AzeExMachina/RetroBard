@@ -94,7 +94,16 @@ def teach(
             f"(Ctrl+C when you have enough)..."
         )
         try:
-            collected = collect_dialogue_frames(game_window, profile.ocr, boxes, echo=typer.echo)
+            text_color = profile.ocr.text_color
+            collected = collect_dialogue_frames(
+                game_window,
+                profile.ocr,
+                boxes,
+                echo=typer.echo,
+                choose_text_color=not game_font.font.glyphs,
+            )
+            if profile.ocr.text_color != text_color:
+                profile.save_to_yaml(profile_path(settings, game))
         finally:
             game_window.close()
 

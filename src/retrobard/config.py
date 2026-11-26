@@ -98,6 +98,11 @@ class OcrConfig(BaseModel):
     picture: NormRect | None = None
     # Brightness (0-255) at or above which a native pixel counts as text
     glyph_threshold: int = Field(default=160, ge=0, le=255)
+    # How a pixel's brightness is measured: "bright" uses its brightest colour
+    # channel, "white" its dimmest, so only near-white pixels count. "white" is
+    # for see-through dialogue boxes where coloured scenery shows between the
+    # letters (e.g. Secret of Mana); teaching picks it by itself when needed.
+    text_color: Literal["bright", "white"] = "bright"
 
 
 class DialogueRules(BaseModel):
@@ -160,13 +165,13 @@ class VoicesConfig(BaseModel):
             "dvbL7qkNGZY1IqPGZAjM",  # Elowen
             "QtY3JBOUKEB5xzrRfOKc",  # Maisie
             "BFd5oBc2DDna33pSi4Gf",  # Alicia
-            "M6N6IdXhi5YNZyZSDe7k",  # Amanda
+            "LDR6rrkVqmy3RBMvySW4",  # Kenzie
         ]
     )
     male_pool: list[str] = Field(
         default_factory=lambda: [
             "6WwXjDDEMyNmFG95zycZ",  # Eldrin
-            "fs2OqxduwXgp9foh2xjK",  # Callum (Husky Trickster)
+            "cymHWdiF8WjUCg6vvFxx",  # Vane
             "ktkP7Nsj67dw2zcplQYt",  # Lawrence
             "10NkTYmU7tSz3Kkl3Lex",  # Kaelen
             "FrS6cKLB1wg4WYgPa9GW",  # Wyatt

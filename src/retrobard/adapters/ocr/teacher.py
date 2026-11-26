@@ -25,6 +25,7 @@ from retrobard.adapters.ocr.glyph_reader import (
     TextLine,
     learn_layout,
     learn_space_gap,
+    letter_pixels,
 )
 from retrobard.config import OcrConfig
 from retrobard.domain.ports import FrameSource
@@ -34,16 +35,51 @@ QUIT_COMMAND = "!quit"
 CONTEXT_COLUMNS = 36
 
 
+# The dialogue area has settled once its letter pixels stop changing for this long
+SETTLE_S = 0.45
+# Share of the dialogue area's pixels that may flicker while it counts as settled,
+# and that must differ from the last collected box for a new one
+STILL_SHARE = 0.0005
+NEW_BOX_SHARE = 0.002
+
+
 def collect_dialogue_frames(
     source: FrameSource,
     cfg: OcrConfig,
     max_boxes: int,
     echo: Callable[[str], None] = print,
     should_stop: Callable[[], bool] | None = None,
+    choose_text_color: bool = False,
 ) -> list[np.ndarray]:
     """Grabs one frame of the game window per settled dialogue box until `max_boxes`
-    are collected, `should_stop()` returns True, or the user presses Ctrl+C."""
+    are collected, `should_stop()` returns True, or the user presses Ctrl+C.
+
+    Settling and novelty are judged on the letter pixels only, so scenery
+    animating behind a see-through box does not count as a change.
+
+    With `choose_text_color` (only before any letter is taught, so taught shapes
+    stay consistent), a box that only shows text when counting near-white pixels
+    switches `cfg.text_color` to "white"; the caller saves the profile."""
     probe = GlyphReader(cfg, GlyphFont())
+    white_cfg = cfg.model_copy(update={"text_color": "white"})
+    white_probe = (
+        GlyphReader(white_cfg, GlyphFont())
+        if choose_text_color and cfg.text_color != "white"
+        else None
+    )
+
+    def letters(crop: np.ndarray) -> np.ndarray:
+        # Near-white pixels while the colour is still being chosen: they settle
+        # even over animated scenery, and white letters show up either way
+        return letter_pixels(crop, white_cfg if white_probe else probe.cfg)
+
+    def shows_text(reader: GlyphReader, frame: np.ndarray, crop: np.ndarray) -> bool:
+        share = float(letter_pixels(crop, reader.cfg).mean())
+        return 0.003 < share < 0.2 and reader.is_text(frame)
+
+    def differs(a: np.ndarray | None, b: np.ndarray, share: float) -> bool:
+        return a is None or a.shape != b.shape or float((a != b).mean()) > share
+
     frames: list[np.ndarray] = []
     prev: np.ndarray | None = None
     last_saved: np.ndarray | None = None
@@ -54,23 +90,28 @@ def collect_dialogue_frames(
             if frame is None:
                 time.sleep(0.5)
                 continue
-            crop = cfg.region.crop(frame)[..., :3].astype(np.int16)
-            if prev is not None and prev.shape == crop.shape and np.abs(crop - prev).mean() < 0.4:
-                stable_since = stable_since or time.monotonic()
-            else:
+            crop = cfg.region.crop(frame)[..., :3]
+            lit = letters(crop)
+            if differs(prev, lit, STILL_SHARE):
                 stable_since = None
-            prev = crop
+            else:
+                stable_since = stable_since or time.monotonic()
+            prev = lit
 
-            if stable_since and (time.monotonic() - stable_since) > 0.45:
-                bright = float((crop.max(axis=2) >= cfg.glyph_threshold).mean())
-                is_new = (
-                    last_saved is None
-                    or last_saved.shape != crop.shape
-                    or np.abs(crop - last_saved).mean() > 1.5
-                )
-                if 0.003 < bright < 0.2 and is_new and probe.is_text(frame):
+            if (
+                stable_since
+                and (time.monotonic() - stable_since) > SETTLE_S
+                and differs(last_saved, lit, NEW_BOX_SHARE)
+            ):
+                found = shows_text(probe, frame, crop)
+                if not found and white_probe and shows_text(white_probe, frame, crop):
+                    # Letters over a see-through box: only near-white pixels are text
+                    cfg.text_color = "white"
+                    probe, white_probe, found = white_probe, None, True
+                    echo("  letters are read as white pixels for this game")
+                if found:
                     frames.append(frame)
-                    last_saved = crop
+                    last_saved = letters(crop)
                     echo(f"  collected box {len(frames)}/{max_boxes}")
             time.sleep(0.1)
     except KeyboardInterrupt:

@@ -9,7 +9,7 @@ from typing import Any
 import cv2
 import numpy as np
 
-from retrobard.adapters.ocr.glyph_reader import GlyphReader
+from retrobard.adapters.ocr.glyph_reader import GlyphReader, letter_pixels
 from retrobard.config import OcrConfig
 from retrobard.domain.models import DialogueEvent, EventType
 from retrobard.domain.ports import FrameSource
@@ -50,7 +50,11 @@ def preprocess_retro_frame(
         )
 
     _, binary = cv2.threshold(gray, binary_threshold, 255, cv2.THRESH_BINARY)
+    return _mask_cursor_and_pad(binary, cursor_mask_ratio)
 
+
+def _mask_cursor_and_pad(binary: np.ndarray, cursor_mask_ratio: float) -> np.ndarray:
+    """Blanks the bottom-right corner where a blinking 'more text' cursor sits."""
     if cursor_mask_ratio > 0.0:
         h, w = binary.shape
         mask_h = int(h * (cursor_mask_ratio * 1.5))
@@ -61,6 +65,15 @@ def preprocess_retro_frame(
         binary, 8, 8, 8, 8, cv2.BORDER_CONSTANT, value=0
     )
     return padded
+
+
+def white_letters_frame(bgra_frame: np.ndarray, cfg: OcrConfig) -> np.ndarray:
+    """The near-white letter pixels of the dialogue region, cursor masked.
+
+    For see-through boxes (text_color "white"): scenery moving behind the box
+    leaves this picture unchanged, so it can tell when the text has settled."""
+    binary = letter_pixels(bgra_frame, cfg).astype(np.uint8) * 255
+    return _mask_cursor_and_pad(binary, cfg.cursor_mask_ratio)
 
 
 def read_ordered_text(
@@ -178,8 +191,29 @@ class OcrWatcher:
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=1.0)
 
+    @property
+    def _see_through_box(self) -> bool:
+        """Letters over a see-through box (scenery shows between them): settling
+        and box detection go by the white letter pixels instead of brightness."""
+        return self.glyph_reader is not None and self.config.text_color == "white"
+
+    @property
+    def _max_ink(self) -> float:
+        # Above this share of lit pixels the region shows a scene, not dialogue. A
+        # see-through box is told apart by its lines of text instead (_box_present),
+        # and a full box of its white letters comes close to the usual limit.
+        return 0.25 if self._see_through_box else 0.12
+
+    def _box_present(self, window_frame: np.ndarray, raw_bgra: np.ndarray) -> bool:
+        if self._see_through_box:
+            # The box is not mostly dark, so ask whether lines of text are showing
+            return self.glyph_reader.is_text(window_frame)
+        return is_dialogue_box_present(raw_bgra, self.config.binary_threshold)
+
     def _preprocess_dialogue(self, window_frame: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         raw_bgra = self.config.region.crop(window_frame)
+        if self._see_through_box:
+            return raw_bgra, white_letters_frame(raw_bgra, self.config)
         processed = preprocess_retro_frame(
             raw_bgra,
             upscale_factor=self.config.upscale_factor,
@@ -279,9 +313,7 @@ class OcrWatcher:
                     window_was_available = True
 
                 raw_bgra, processed = self._preprocess_dialogue(window_frame)
-                box_present = is_dialogue_box_present(
-                    raw_bgra, self.config.binary_threshold
-                )
+                box_present = self._box_present(window_frame, raw_bgra)
 
                 # Track when the dialogue window closes so we reset speaker memory
                 if not box_present:
@@ -312,7 +344,7 @@ class OcrWatcher:
                         has_spoken_current_box = False
 
                     if stable_ms >= self.config.debounce_ms and not has_spoken_current_box:
-                        if 0.0005 < white_pixel_ratio < 0.12 and box_present:
+                        if 0.0005 < white_pixel_ratio < self._max_ink and box_present:
                             full_text = self._read_dialogue(window_frame, processed)
 
                             # Re-grab to make sure the text crawl had really finished

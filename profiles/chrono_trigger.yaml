@@ -3,10 +3,10 @@ window:
   process_name: snes9x-x64.exe
 ocr:
   region:
-    x: 0.1102
-    y: 0.596
-    w: 0.7802
-    h: 0.3354
+    x: 0.1491
+    y: 0.5873
+    w: 0.706
+    h: 0.2967
   speaker_region:
     x: 0.1145
     y: 0.6131
@@ -17,11 +17,17 @@ ocr:
   speaker_binary_threshold: 187
   cursor_mask_ratio: 0.1
   debounce_ms: 200
+  engine: auto
+  native_width: 256
+  native_height: 224
+  glyph_threshold: 160
+  text_color: bright
 dialogue_rules:
   speaker_delimiter: ':'
   strip_patterns:
   - ^[\*\-]+\s*
   min_length: 2
+  skip_choices: true
 controls:
   enabled: true
   skip_keys:
@@ -34,13 +40,14 @@ controls:
   - 1
   cooldown_ms: 250
 voices:
-  default_narrator: pNInz6obpgDQGcFmaJgB
+  default_narrator: eGSd0uV8dNQnZuEEX9lu
+  narrate_unnamed: false
   characters:
     CRONO: 6WwXjDDEMyNmFG95zycZ
     FROG: kzoxjYFQafNtwvtRruG8
-    MOM: 22N9cF8z0o7y23njdyaY
+    MOM: ImnfuV8oxhB7ya99oJfc
     CHANCELLOR:
-      voice_id: fs2OqxduwXgp9foh2xjK
+      voice_id: cymHWdiF8WjUCg6vvFxx
       stability: 0.3
       similarity_boost: 0.55
       style: 0.6
@@ -49,7 +56,7 @@ voices:
       effect: none
       use_speaker_boost: true
     ROBO:
-      voice_id: fs2OqxduwXgp9foh2xjK
+      voice_id: cymHWdiF8WjUCg6vvFxx
       stability: 0.95
       similarity_boost: 0.75
       style: 0.0
@@ -94,7 +101,7 @@ voices:
       effect: none
       use_speaker_boost: true
     AYLA:
-      voice_id: WtA85syCrJwasGeHGH2p
+      voice_id: iKojuowynDxcQKMFfdNK
       stability: 0.3
       similarity_boost: 0.6
       style: 0.5
@@ -103,7 +110,7 @@ voices:
       effect: none
       use_speaker_boost: true
     GATO:
-      voice_id: 5OSluWlAJntR1KG2pWaB
+      voice_id: 8dEUmyPMdDdK91vboYih
       stability: 0.85
       similarity_boost: 0.75
       style: 0.0
@@ -112,7 +119,7 @@ voices:
       effect: robot
       use_speaker_boost: true
     YAKRA:
-      voice_id: 5OSluWlAJntR1KG2pWaB
+      voice_id: 8dEUmyPMdDdK91vboYih
       stability: 0.35
       similarity_boost: 0.75
       style: 0.0
@@ -121,7 +128,7 @@ voices:
       effect: monster
       use_speaker_boost: true
     IMP:
-      voice_id: 5OSluWlAJntR1KG2pWaB
+      voice_id: 8dEUmyPMdDdK91vboYih
       stability: 0.35
       similarity_boost: 0.75
       style: 0.0
@@ -134,10 +141,10 @@ voices:
   - dvbL7qkNGZY1IqPGZAjM
   - QtY3JBOUKEB5xzrRfOKc
   - BFd5oBc2DDna33pSi4Gf
-  - M6N6IdXhi5YNZyZSDe7k
+  - LDR6rrkVqmy3RBMvySW4
   male_pool:
   - 6WwXjDDEMyNmFG95zycZ
-  - 5OSluWlAJntR1KG2pWaB
+  - 8dEUmyPMdDdK91vboYih
   - ktkP7Nsj67dw2zcplQYt
   - 10NkTYmU7tSz3Kkl3Lex
   - FrS6cKLB1wg4WYgPa9GW

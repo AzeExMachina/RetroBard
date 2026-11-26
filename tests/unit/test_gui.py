@@ -540,3 +540,54 @@ class TestWhatsNew:
         assert not window.was_updated
         window.announce_update()
         assert not window._announced
+
+
+class TestLastGame:
+    @staticmethod
+    def _open(tmp_path: Path, sample_profile: GameProfile) -> MainWindow:
+        settings = AppSettings(
+            _env_file=None,
+            cache_dir=tmp_path / "cache",
+            profiles_dir=tmp_path / "profiles",
+            custom_tts_file=tmp_path / "custom_tts.json",
+            udp_port=0,
+            udp_token="gui-test",
+        )
+        ui_settings = QSettings(str(tmp_path / "ui.ini"), QSettings.Format.IniFormat)
+        return MainWindow(settings, ui_settings)
+
+    @staticmethod
+    def _add_games(tmp_path: Path, sample_profile: GameProfile, *games: str) -> None:
+        for game in games:
+            sample_profile.game_id = game
+            sample_profile.save_to_yaml(tmp_path / "profiles" / f"{game}.yaml")
+
+    def test_the_game_used_last_opens_at_startup(self, qapp, tmp_path, sample_profile) -> None:
+        self._add_games(tmp_path, sample_profile, "chrono_trigger", "secret_of_mana")
+        first = self._open(tmp_path, sample_profile)
+        assert first.state.game == "chrono_trigger"
+        first.game_combo.setCurrentText("secret_of_mana")
+        first.ui_settings.sync()
+        first.shutdown()
+
+        again = self._open(tmp_path, sample_profile)
+        try:
+            assert again.state.game == "secret_of_mana"
+            assert again.game_combo.currentText() == "secret_of_mana"
+        finally:
+            again.shutdown()
+
+    def test_a_removed_last_game_falls_back_to_the_first(self, qapp, tmp_path, sample_profile) -> None:
+        self._add_games(tmp_path, sample_profile, "chrono_trigger", "secret_of_mana")
+        first = self._open(tmp_path, sample_profile)
+        first.game_combo.setCurrentText("secret_of_mana")
+        first.ui_settings.sync()
+        first.shutdown()
+        (tmp_path / "profiles" / "secret_of_mana.yaml").unlink()
+
+        again = self._open(tmp_path, sample_profile)
+        try:
+            assert again.state.game == "chrono_trigger"
+            assert again.game_combo.currentText() == "chrono_trigger"
+        finally:
+            again.shutdown()

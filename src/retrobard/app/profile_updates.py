@@ -19,15 +19,18 @@ from retrobard.config import CharacterVoiceConfig, GameProfile, VoicesConfig
 
 log = logging.getLogger(__name__)
 
-# ElevenLabs Default voices stop working on 2026-12-31. Each maps to the
-# replacement ElevenLabs suggests (an Infinity voice, which does not expire).
+# ElevenLabs Default voices stop working on 2026-12-31. Each maps to an Infinity
+# voice, which ElevenLabs never retires: the replacement ElevenLabs suggests, or
+# the closest Infinity voice where its suggestion is a voice that can be removed.
 RETIRED_VOICES: dict[str, str] = {
+    "pNInz6obpgDQGcFmaJgB": "eGSd0uV8dNQnZuEEX9lu",  # Adam -> Adam (Infinity)
+    "hpp4J3VqNfWAUOO0d1Us": "dsigZNN9uZvzbZVKvb6a",  # Bella -> Bella (Infinity)
     "CwhRBWXzGAHq8TQ4Fs17": "gOupLcAkjEnguROwi4oS",  # Roger -> Darian
     "EXAVITQu4vr4xnSDxMaL": "OZ0L6eISlOejga3XjDFt",  # Sarah -> Talia
     "FGY2WhTYpPnrIDTdsKH5": "WQP7cQUF5aAS6Axh5yaa",  # Laura -> Elara
     "IKne3meq5aSn9XLyUdCD": "jSuBIjxMKhqIfb0wCK1F",  # Charlie -> Baxter
     "JBFqnCBsd6RMkjVDRZzb": "6WwXjDDEMyNmFG95zycZ",  # George -> Eldrin
-    "N2lVS1w4EtoT3dr4eOWO": "fs2OqxduwXgp9foh2xjK",  # Callum -> Callum (Husky Trickster)
+    "N2lVS1w4EtoT3dr4eOWO": "cymHWdiF8WjUCg6vvFxx",  # Callum -> Vane
     "SAz9YHcvj6GT2YYXdXww": "dvbL7qkNGZY1IqPGZAjM",  # River -> Elowen
     "SOYHLrjzK2X1ezoPC6cr": "10NkTYmU7tSz3Kkl3Lex",  # Harry -> Kaelen
     "TX3LPaxmHKxFdv7VOQHJ": "ktkP7Nsj67dw2zcplQYt",  # Liam -> Lawrence
@@ -39,11 +42,23 @@ RETIRED_VOICES: dict[str, str] = {
     "iP95p4xoKVk53GoZ742B": "AaOhDHYJ1XLZk74lXhdE",  # Chris -> Caleb
     "nPczCjzI2devNBz1zQrb": "8dEUmyPMdDdK91vboYih",  # Brian -> Sawyer
     "onwK4e9ZLuTAKqWW03F9": "fnYMz3F5gMEDGMWcH1ex",  # Daniel -> Finley
-    "pFZP5JQG7iQjIQuC4Bku": "22N9cF8z0o7y23njdyaY",  # Lily -> Florence
+    "pFZP5JQG7iQjIQuC4Bku": "ImnfuV8oxhB7ya99oJfc",  # Lily -> Helen
     "pqHfZKP75CvOlQylNhV4": "FrS6cKLB1wg4WYgPa9GW",  # Bill -> Wyatt
     # Charlotte is no longer available at all
     "XB0fDUnXU5powFXDhCwa": "dvbL7qkNGZY1IqPGZAjM",  # Charlotte -> Elowen
 }
+
+
+def original_default_voices() -> dict[str, str]:
+    """Replacement voice -> the Default voice it replaced.
+
+    Free ElevenLabs plans cannot use the replacements (Voice Library voices) through
+    the API, but can still use the Default voices until 2026-12-31. Where two
+    Default voices share a replacement, the first one listed is used."""
+    originals: dict[str, str] = {}
+    for old, new in RETIRED_VOICES.items():
+        originals.setdefault(new, old)
+    return originals
 
 
 def _current(voice_id: str) -> str:

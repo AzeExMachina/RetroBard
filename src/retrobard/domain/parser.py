@@ -27,6 +27,14 @@ VOWELLESS_INTERJECTIONS = {
 CHOICE_LINE_RE = re.compile(r"^[^A-Za-z0-9]{0,3}[A-Z0-9][\w'\-]*(?: [\w'\-]+){0,3}[.!]?$")
 CHOICE_LINE_MAX_CHARS = 24
 
+# Words that often follow "I" in dialogue. OCR can merge the two ("Iheard",
+# "Idon't"), and none of them makes a real word with an "I" in front, so the
+# merged form is always split again. Contractions are listed by their stem
+# ("don" for "don't"), since the apostrophe ends the match.
+WORDS_AFTER_I = frozenset(
+    ["am", "was", "will", "would", "have", "had", "can", "cannot", "could", "should", "shall", "must", "might", "may", "need", "needed", "think", "thought", "know", "knew", "want", "wanted", "see", "saw", "hear", "heard", "guess", "guessed", "mean", "meant", "did", "do", "feel", "felt", "hope", "hoped", "wish", "wished", "said", "say", "told", "tell", "got", "get", "just", "never", "really", "also", "still", "only", "always", "often", "already", "love", "loved", "like", "liked", "hate", "hated", "believe", "found", "find", "came", "come", "went", "go", "made", "make", "tried", "try", "remember", "forgot", "forget", "promise", "promised", "swear", "bet", "wonder", "suppose", "missed", "miss", "lost", "left", "met", "saved", "owe", "beg", "understand", "understood", "agree", "asked", "ask", "called", "thank", "figured", "realized", "decided", "used", "don", "didn", "won", "wasn", "couldn", "wouldn", "shouldn", "haven", "hadn"]
+)
+
 NPC_SPEED_VARIANTS =[0.88, 0.94, 1.00, 1.06, 1.12]
 NPC_STABILITY_VARIANTS = [0.35, 0.50, 0.70]
 NPC_PITCH_VARIANTS = [-1.5, -0.8, 0.0, 0.8, 1.5]
@@ -63,15 +71,28 @@ class DialogueParser:
         ]
         self._whitespace_re = re.compile(r"\s+")
         self._non_alnum_re = re.compile(r"[^A-Z0-9 _\-]")
-        self._merged_pronoun_re = re.compile(r"\bI([a-z]{2,})\b")
+        # OCR sometimes merges "I am" into "Iam". Only split before words that
+        # commonly follow "I", so real words such as "Its", "Into" or "Instead"
+        # stay whole.
+        self._merged_pronoun_re = re.compile(
+            r"\bI(" + "|".join(sorted(WORDS_AFTER_I, key=len, reverse=True)) + r")\b"
+        )
         self._known_characters = list(profile.voices.characters.keys())
 
-        # Matches "MOM: Hello", "MOM; Hello", "GUARD 1 | Halt!"
+        # Matches "MOM: Hello", "MOM; Hello", "GUARD 1 | Halt!", and names written
+        # flush against the text ("MAN:Hang on!", as Secret of Mana does). Without a
+        # space, a digit after the colon is a time or score ("10:30"), not a name.
         self._inline_delim_re = re.compile(
-            r"^\s*([A-Za-z0-9\.\-\' ]{2,18}?)\s*[:;\|]\s+(.+)$", re.DOTALL
+            r"^\s*([A-Za-z0-9\.\-\' ]{2,18}?)\s*[:;\|](?:\s+|(?=[^\s\d]))(.+)$", re.DOTALL
         )
         self._word_re = re.compile(r"[A-Za-z]+")
         self._repeat_re = re.compile(r"(.)\1+")
+        # A line of a box where a second character starts talking: "POPOI:Hey!"
+        # (cursor or bullet marks in front allowed). The name is checked further
+        # in _starts_new_speaker.
+        self._speaker_line_re = re.compile(
+            r"^[\*\-\|\s>]*([A-Za-z0-9\.\-\' ]{2,18}?)\s*[:;\|](?:\s+|(?=[^\s\d]))\S"
+        )
         # Matches dropped-colon cases ("MOM Let's get moving!")
         self._allcaps_prefix_re = re.compile(
             r"^\s*([A-Z0-9]{2,12})\s+([A-Z][a-z].+)$", re.DOTALL
@@ -92,6 +113,44 @@ class DialogueParser:
             )
             self._active_speaker = None
             self._last_speaker_time = 0.0
+
+    def split_speakers(self, raw_text: str) -> list[str]:
+        """Splits a box where a later line starts with another character's name.
+
+        "RANDI:Look!\\nPOPOI:Where?" -> ["RANDI:Look!", "POPOI:Where?"]. Only a
+        line that begins with an all-caps name (or a character the profile
+        voices) and a delimiter starts a new part, so a sentence that merely
+        wraps onto a line with a colon in it stays whole."""
+        lines = raw_text.split("\n")
+        parts: list[list[str]] = [[lines[0]]]
+        for line in lines[1:]:
+            if self._starts_new_speaker(line):
+                parts.append([line])
+            else:
+                parts[-1].append(line)
+        return ["\n".join(part) for part in parts]
+
+    def _starts_new_speaker(self, line: str) -> bool:
+        match = self._speaker_line_re.match(line)
+        if not match:
+            return False
+        name = match.group(1).strip()
+        letters = [c for c in name if c.isalpha()]
+        return bool(letters) and (
+            all(c.isupper() for c in letters) or self._is_known_character(name)
+        )
+
+    def parse_all(
+        self, raw_text: str, explicit_speaker: str | None = None
+    ) -> list[ParsedDialogue]:
+        """Parses a box that may hold several characters talking in turn; each
+        part is returned in order. `explicit_speaker` applies to the first part."""
+        results = []
+        for index, part in enumerate(self.split_speakers(raw_text or "")):
+            parsed = self.parse(part, explicit_speaker if index == 0 else None)
+            if parsed:
+                results.append(parsed)
+        return results
 
     def parse(
         self, raw_text: str, explicit_speaker: str | None = None

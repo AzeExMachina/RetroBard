@@ -22,6 +22,8 @@ class TestSpeakerExtraction:
             ("MARLE\nWhere are we going?", "MARLE", "Where are we going?"),
             # Single-line dropped colon (ALL-CAPS speaker followed by Mixed-Case dialogue)
             ("MOM Let's get moving, now!", "MOM", "Let's get moving, now!"),
+            # Name written flush against the text, over two lines (Secret of Mana)
+            ("MAN:Hang on!\nI'll help you!", "MAN", "Hang on! I'll help you!"),
         ],
     )
     def test_inline_speaker_variants(
@@ -77,6 +79,8 @@ class TestSpeakerFalsePositives:
             "Crono! Wake up, sleepyhead!",
             # A mangled semicolon after ordinary words must not invent a speaker
             "He said; go away and never come back.",
+            # A time is not a speaker followed by text
+            "10:30 is when the ferry leaves.",
         ],
     )
     def test_ordinary_sentences_keep_their_full_text(
@@ -98,6 +102,30 @@ class TestSpeakerFalsePositives:
         assert result is not None
         assert result.speaker == "OLD MAN"
         assert result.clean_text == "The bridge is out."
+
+
+class TestMergedPronoun:
+    @pytest.mark.parametrize(
+        "raw_input, expected_text",
+        [
+            ("Iam not afraid.", "I am not afraid."),
+            ("Iwill find it.", "I will find it."),
+            ("Imissed you!", "I missed you!"),
+            ("Idon't know.", "I don't know."),
+            ("Isn't it late?", "Isn't it late?"),
+            # Real words starting with I stay whole
+            ("Its roots are deep.", "Its roots are deep."),
+            ("Instead, go north.", "Instead, go north."),
+            ("Into the forest!", "Into the forest!"),
+        ],
+    )
+    def test_only_a_merged_pronoun_is_split(
+        self, sample_profile: GameProfile, raw_input: str, expected_text: str
+    ) -> None:
+        result = DialogueParser(sample_profile).parse(raw_input)
+
+        assert result is not None
+        assert result.clean_text == expected_text
 
 
 class TestSanitizationAndGibberishFilter:

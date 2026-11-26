@@ -25,6 +25,7 @@ from retrobard.adapters.producers.win32_input import make_key_reader, make_pad_r
 from retrobard.adapters.tts.elevenlabs_tts import ElevenLabsTTS
 from retrobard.adapters.tts.mock_local import ConsoleMockTTS
 from retrobard.adapters.tts.openai_compat_tts import OpenAICompatibleTTS
+from retrobard.app.profile_updates import original_default_voices
 from retrobard.config import (
     GAME_ID_HINT,
     AppSettings,
@@ -169,6 +170,8 @@ def build_orchestrator(
                     api_key=elevenlabs_api_key(settings),
                     model_id=settings.elevenlabs_model_id,
                     output_format=audio_format,
+                    fallback_voices=original_default_voices(),
+                    status=status,
                 )
             except ValueError as exc:
                 raise SessionError(str(exc)) from exc

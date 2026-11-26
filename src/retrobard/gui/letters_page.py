@@ -218,6 +218,10 @@ class LettersPage(QWidget):
         self.collect_button.setText("Stop collecting")
         self.progress_label.setText("Play the game and step through dialogue...")
         max_boxes = self.boxes_spin.value()
+        settings = self.state.settings
+        # The way letters are told apart may only change before any is taught
+        nothing_taught = not setup.load_font(settings, game).font.glyphs
+        text_color = profile.ocr.text_color
 
         def work() -> None:
             source = Win32WindowSource(profile.window, status=null_status)
@@ -228,9 +232,15 @@ class LettersPage(QWidget):
                     max_boxes,
                     echo=lambda message: self._progress.emit(message.strip()),
                     should_stop=self._stop_collecting.is_set,
+                    choose_text_color=nothing_taught,
                 )
             finally:
                 source.close()
+            if profile.ocr.text_color != text_color:
+                chosen = profile.ocr.text_color
+                setup.update_profile(
+                    settings, game, lambda saved: setattr(saved.ocr, "text_color", chosen)
+                )
             self._collected.emit(frames)
 
         threading.Thread(target=work, daemon=True).start()

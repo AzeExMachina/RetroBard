@@ -28,7 +28,7 @@ from retrobard.config import (
     WindowBinding,
 )
 
-DEFAULT_NARRATOR_VOICE = "pNInz6obpgDQGcFmaJgB"
+DEFAULT_NARRATOR_VOICE = "eGSd0uV8dNQnZuEEX9lu"  # Adam (Infinity: never retired)
 
 
 def list_games(settings: AppSettings) -> list[str]:

@@ -10,6 +10,8 @@ app's "Check for updates" window shows.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-26
+
 ### Added
 - RetroBard opens the game you used last. If that game's profile is gone, it
   opens the first game in the list.
@@ -32,11 +34,6 @@ app's "Check for updates" window shows.
   next to Save letters. Discarded shapes are not taught; they come back if they are
   collected again.
 
-### Fixed
-- Pressing Start with a custom voice server (such as Kokoro) after opening the
-  Server settings could freeze or close the app ("Fatal Python error: Aborted").
-  This was a bug in Python 3.13.0; RetroBard is now built with Python 3.13.16.
-
 ### Changed
 - The Voice list on the Play tab now starts with the custom server (such as the
   free Kokoro server), then ElevenLabs, then Silent test.
@@ -48,6 +45,9 @@ app's "Check for updates" window shows.
   Infinity versions at startup.
 
 ### Fixed
+- Pressing Start with a custom voice server (such as Kokoro) after opening the
+  Server settings could freeze or close the app ("Fatal Python error: Aborted").
+  This was a bug in Python 3.13.0; RetroBard is now built with Python 3.13.16.
 - Collecting dialogue on the Letters tab now works in games whose text box is
   see-through, with scenery showing between the letters (such as Secret of Mana).
   RetroBard notices this the first time you collect and reads only the white

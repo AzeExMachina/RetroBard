@@ -3,11 +3,13 @@
 """The page you leave open while playing: start/stop and what RetroBard is doing."""
 
 import threading
+from pathlib import Path
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -24,6 +26,10 @@ from retrobard.app.session import (
     SessionOptions,
     TTSBackend,
     VoiceSession,
+    choose_rom,
+    load_profile,
+    needs_rom,
+    saved_rom_path,
 )
 from retrobard.app.setup import load_or_create_profile
 from retrobard.credentials import elevenlabs_api_key
@@ -43,6 +49,7 @@ SOURCE_CHOICES = [
     ("The game window", InputSource.OCR),
     ("A helper script (UDP)", InputSource.UDP),
     ("Both", InputSource.BOTH),
+    ("Game memory (RetroArch)", InputSource.MEMORY),
 ]
 
 
@@ -64,8 +71,6 @@ class PlayPage(QWidget):
         for label, backend in VOICE_CHOICES:
             self.voice_combo.addItem(label, backend)
         self.source_combo = QComboBox()
-        for label, source in SOURCE_CHOICES:
-            self.source_combo.addItem(label, source)
 
         self.key_button = QPushButton("ElevenLabs key...")
         self.key_label = QLabel()
@@ -122,6 +127,10 @@ class PlayPage(QWidget):
         bridge.event.connect(self.on_status)
         self._start_finished.connect(self._on_start_finished)
         state.game_changed.connect(lambda _game: self._refresh_controls())
+        state.source_changed.connect(lambda _source: self._fill_sources())
+        state.game_data_saved.connect(lambda _game: self._fill_sources())
+        self.source_combo.currentIndexChanged.connect(self._on_source_picked)
+        self._fill_sources()
         state.game_data_saved.connect(self._apply_saved_options)
         self._refresh_controls()
 
@@ -151,6 +160,8 @@ class PlayPage(QWidget):
             if not self.has_custom_server():
                 self.state_label.setText("Set up your voice server first (Server... button)")
                 return
+        if self.state.reads_memory and not self._ensure_rom():
+            return
         self._starting = True
         self.unknown_box.hide()
         self._refresh_controls()
@@ -160,7 +171,7 @@ class PlayPage(QWidget):
             SessionOptions(
                 game=self.state.game,
                 tts=backend,
-                source=InputSource(self.source_combo.currentData()),
+                source=self.state.source,
             ),
             status=self.bridge.sink,
         )
@@ -229,6 +240,57 @@ class PlayPage(QWidget):
     def ask_api_key(self) -> None:
         ApiKeyDialog(self).exec()
         self._refresh_controls()
+
+    def _fill_sources(self) -> None:
+        """Lists where the dialogue can be read from, with the game's own choice
+        selected. Game memory is only offered for games RetroBard knows it for."""
+        try:
+            has_memory = load_profile(self.state.settings, self.state.game).memory is not None
+        except SessionError:
+            has_memory = False
+        self.source_combo.blockSignals(True)
+        self.source_combo.clear()
+        for label, source in SOURCE_CHOICES:
+            if source != InputSource.MEMORY or has_memory:
+                self.source_combo.addItem(label, source)
+        index = self.source_combo.findData(self.state.source)
+        self.source_combo.setCurrentIndex(max(index, 0))
+        self.source_combo.blockSignals(False)
+        if index < 0:
+            # Remembered for a game that no longer offers it
+            self.state.set_source(InputSource(self.source_combo.currentData()))
+
+    def _on_source_picked(self, _index: int) -> None:
+        if self.source_combo.currentData() is not None:
+            self.state.set_source(InputSource(self.source_combo.currentData()))
+
+    def _ensure_rom(self) -> bool:
+        """For games whose text is read from their ROM, asks for the ROM the first
+        time (or after it was moved). False when starting should not go ahead."""
+        settings, game = self.state.settings, self.state.game
+        try:
+            profile = load_profile(settings, game)
+        except SessionError:
+            return True  # starting the session reports this
+        if not needs_rom(profile) or saved_rom_path(settings, game) is not None:
+            return True
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Choose the game's ROM (its text is read from there)",
+            "",
+            "ROM files (*.sfc *.smc *.bin);;All files (*)",
+        )
+        if not path:
+            self.state_label.setText("Choose the game's ROM to read its dialogue from memory")
+            return False
+        try:
+            choose_rom(settings, game, Path(path))
+        except SessionError as exc:
+            self._append(f"Could not use that ROM: {exc}")
+            self.state_label.setText(str(exc))
+            return False
+        self._append(f"ROM saved for {game} (only on this computer).")
+        return True
 
     def ask_custom_server(self) -> None:
         CustomServerDialog(self.state.settings, self).exec()

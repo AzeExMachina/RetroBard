@@ -10,7 +10,7 @@ ROOT = HERE.parent
 # Shipped game profiles and letters; at runtime they are read from <app>/_internal/profiles
 datas = [
     (str(path), "profiles")
-    for pattern in ("*.yaml", "*.font.json")
+    for pattern in ("*.yaml", "*.font.json", "*.tbl")
     for path in sorted((ROOT / "profiles").glob(pattern))
 ]
 

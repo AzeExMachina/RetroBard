@@ -14,6 +14,7 @@ import os
 import shutil
 import subprocess
 import sys
+import sysconfig
 import zipfile
 from pathlib import Path
 
@@ -291,6 +292,42 @@ def draw_icon(path: Path) -> None:
     del app
 
 
+def python_dll_dir() -> Path:
+    """Where this Python keeps the DLLs its own modules need (OpenSSL, libffi...)."""
+    return Path(sys.base_prefix) / "DLLs"
+
+
+def pyinstaller_env() -> dict[str, str]:
+    """The environment for PyInstaller, with Python's own DLLs found first.
+
+    PyInstaller looks for a module's DLLs on PATH. A shell such as Git Bash puts
+    its own copies first (Git's OpenSSL in mingw64/bin), and bundling those next
+    to Python's _ssl makes the app crash on start ("DLL load failed while
+    importing _ssl")."""
+    env = os.environ.copy()
+    env["PATH"] = os.pathsep.join(
+        [str(python_dll_dir()), sys.base_prefix, env.get("PATH", "")]
+    )
+    return env
+
+
+def find_foreign_python_dlls(folder: Path, dll_dir: Path, packages_dir: Path) -> list[Path]:
+    """Bundled DLLs named like one of Python's own whose contents match neither
+    Python's copy nor one shipped inside an installed package (pygame brings its
+    own zlib1.dll, for instance): a copy picked up from another program, which
+    Python's modules may not be able to load."""
+    found = []
+    for path in sorted(folder.rglob("*.dll")):
+        own = dll_dir / path.name
+        if not own.is_file():
+            continue
+        data = path.read_bytes()
+        sources = [own, *packages_dir.rglob(path.name)]
+        if not any(source.read_bytes() == data for source in sources):
+            found.append(path)
+    return found
+
+
 def run_pyinstaller() -> Path:
     subprocess.run(
         [
@@ -301,6 +338,7 @@ def run_pyinstaller() -> Path:
         ],
         check=True,
         cwd=ROOT,
+        env=pyinstaller_env(),
     )
     return DIST / "RetroBard"
 
@@ -330,6 +368,15 @@ def main() -> None:
     excluded = find_excluded_binaries(folder)
     if excluded:
         refuse("Build stopped: these files must be left out of the build.", excluded)
+    foreign = find_foreign_python_dlls(
+        folder, python_dll_dir(), Path(sysconfig.get_paths()["purelib"])
+    )
+    if foreign:
+        refuse(
+            "Build stopped: these DLLs come from another program, not this Python, "
+            "and would stop the app from starting. Build from a plain PowerShell window.",
+            foreign,
+        )
     readme = (HERE / "README-testers.txt").read_text(encoding="utf-8")
     (folder / "README.txt").write_text(readme.replace("{version}", __version__), encoding="utf-8")
     copy_project_notices(folder)

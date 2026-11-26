@@ -18,6 +18,7 @@ from retrobard.app.session import (
     TTSBackend,
     VoiceSession,
     build_orchestrator,
+    choose_rom,
     load_profile,
     profile_for_backend,
     profile_path,
@@ -174,6 +175,133 @@ def run(
         typer.echo("\nShutting down RetroBard...")
     finally:
         session.stop()
+
+
+@app.command("set-rom")
+def set_rom(
+    rom: Path = typer.Argument(..., help="Your ROM file of the game"),
+    game: str = typer.Option("secret_of_mana", "--game", "-g", help="Profile YAML name"),
+) -> None:
+    """Choose the ROM file for a game whose dialogue is read from its ROM.
+
+    The path is saved for you only, not in the game's profile. The file must be
+    the exact version the profile was made for."""
+    settings = AppSettings()
+    try:
+        choose_rom(settings, game, rom)
+    except SessionError as exc:
+        raise _fail(str(exc)) from exc
+    typer.echo(f"ROM for {game} saved (in {settings.rom_paths_file}).")
+
+
+@app.command("find-text")
+def find_text(
+    text: str = typer.Argument(
+        ..., help="A piece of the line on screen right now, typed exactly, e.g. 'Welcome to'"
+    ),
+    file: Path | None = typer.Option(
+        None, "--file", "-f", help="Search this file (a ROM or a saved dump) instead of RetroArch"
+    ),
+    save: Path | None = typer.Option(
+        None, "--save", help="Also save the memory read from RetroArch to this file"
+    ),
+    size: str = typer.Option(
+        "0x20000", "--size", help="Bytes of work RAM to read (SNES: 0x20000 = 128 KB)"
+    ),
+    port: int = typer.Option(55355, "--port", help="RetroArch network command port"),
+    command: str = typer.Option(
+        "read_core_ram", "--command", help="read_core_ram or read_core_memory"
+    ),
+    max_hits: int = typer.Option(20, "--max-hits", help="Matches to show per layout"),
+) -> None:
+    """Find where the game keeps a line of dialogue, without knowing its text encoding.
+
+    Open a dialogue box in RetroArch, then run this with a few words you can see.
+    Use words of one case where possible, and avoid long words that might be
+    stored compressed."""
+    from retrobard.adapters.producers.retroarch_memory import (
+        COMMANDS,
+        RetroArchError,
+        RetroArchMemoryClient,
+    )
+    from retrobard.app.memory_search import (
+        PREVIEW_AFTER,
+        PREVIEW_BEFORE,
+        SNES_WRAM_START,
+        check_search_text,
+        dump_ram,
+        relative_search,
+        strip_copier_header,
+    )
+
+    problem = check_search_text(text)
+    if problem:
+        raise _fail(problem)
+
+    header = 0
+    if file is not None:
+        try:
+            data, header = strip_copier_header(file.read_bytes())
+        except OSError as exc:
+            raise _fail(f"Could not read {file}: {exc}") from exc
+        where = f"{file.name}" + (" (512-byte copier header skipped)" if header else "")
+    else:
+        if command not in COMMANDS:
+            raise _fail(f"--command must be one of: {', '.join(COMMANDS)}")
+        try:
+            wanted = int(size, 0)
+        except ValueError as exc:
+            raise _fail(f"--size {size!r} is not a number (e.g. 0x20000)") from exc
+        client = RetroArchMemoryClient("127.0.0.1", port, chunk_bytes=4096, command=command)
+        try:
+            typer.echo("Reading memory from RetroArch...")
+            # RetroArch answers about one request per frame, so ask for big pieces
+            data = dump_ram(client, wanted, chunk=4096)
+        except RetroArchError as exc:
+            raise _fail(
+                f"Could not read RetroArch's memory ({exc}). Is a game running and "
+                f"Network Commands turned on?"
+            ) from exc
+        finally:
+            client.close()
+        where = f"RetroArch work RAM ({len(data) // 1024} KB)"
+        if save is not None:
+            save.write_bytes(data)
+            typer.echo(f"Saved the memory to {save}")
+
+    is_ram = file is None and command == "read_core_ram"
+    total = 0
+    for stride in (1, 2):
+        hits = relative_search(data, text, stride=stride)
+        total += len(hits)
+        if not hits:
+            continue
+        layout = "1 byte per letter" if stride == 1 else "2 bytes per letter (letter + attribute)"
+        typer.echo(f"\n{len(hits)} match(es) in {where}, {layout}:")
+        for hit in hits[:max_hits]:
+            place = f"offset 0x{hit.offset + header:X}"
+            if is_ram:
+                place += f" (SNES ${SNES_WRAM_START + hit.offset:06X})"
+            letters = ", ".join(
+                f"'{first}' = {base:02X}"
+                for first, base in (("A", hit.upper_a), ("a", hit.lower_a))
+                if base is not None
+            )
+            preview = hit.decode(
+                data,
+                hit.offset - PREVIEW_BEFORE * stride,
+                hit.offset + (len(text) + PREVIEW_AFTER) * stride,
+            )
+            typer.echo(f"  {place}  {letters}")
+            typer.echo(f"    {preview}")
+        if len(hits) > max_hits:
+            typer.echo(f"  ... {len(hits) - max_hits} more (type more of the line to narrow it)")
+
+    if total == 0:
+        typer.echo(
+            f"No match in {where}. Try a shorter piece of the line (common words may be "
+            f"stored compressed), or search the ROM file with --file."
+        )
 
 
 @app.command()

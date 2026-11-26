@@ -10,6 +10,50 @@ app's "Check for updates" window shows.
 
 ## [Unreleased]
 
+### Added
+- RetroBard can read the dialogue straight from the game's memory instead of
+  the screen, for **Secret of Mana** and **Chrono Trigger** (USA versions)
+  played in RetroArch with the Snes9x core. The text is exact, even in
+  see-through text boxes, and there is no dialogue box to select and no
+  letters to teach. Turn on **Network Commands** in RetroArch's Network
+  settings, then set **Read dialogue from** on the Play tab to **Game memory
+  (RetroArch)**. The first time you press Start, choose the game's ROM file: the
+  text is read from there, so RetroBard checks that it is the exact version
+  the profile was made for. Its location is remembered on this computer, and
+  the file never leaves it. From the command line, `retrobard set-rom` does the
+  same.
+- A new Quick Start page explains how to set up reading from game memory.
+- Game profiles can give a character a second name that speaks with the same
+  voice. In Chrono Trigger, Marle is called "GIRL" until she gives her name, and
+  those lines now use Marle's voice instead of a random one.
+- Chrono Trigger no longer speaks the place names shown when you enter an area
+  ("Leene Square", "Residence"), and they no longer make the last speaker say
+  them. Other games are not affected.
+- `retrobard find-text`, for people making game profiles, finds where a game
+  keeps a line of dialogue in its memory or ROM, given the text on screen.
+
+### Changed
+- Each game remembers where its dialogue is read from (the game window, a
+  helper script or game memory). **Game memory** is only offered for the games
+  that support it.
+- When reading from game memory, the Letters tab and the Setup tab's dialogue
+  area and preview are switched off, since they aren't needed. Linking the
+  window on the Setup tab is still useful: pick RetroArch there so the skip keys
+  only work while the game is in front.
+- Profiles you already have are brought up to date on the next start with new
+  settings from the shipped ones, such as reading from game memory, character
+  second names and the place-name rule. Settings you changed yourself stay
+  as they are.
+
+### Fixed
+- A line with a speaker's name but nothing to say ("RANDI: !?") is still
+  silent, but the unnamed lines after it are now spoken in that character's
+  voice instead of falling back to the narrator or a stranger.
+- The Windows build could include a copy of OpenSSL that doesn't belong to
+  Python, so the packaged app closed at start with "DLL load failed while
+  importing _ssl". The build now uses Python's own copy, and refuses to package
+  any other.
+
 ## [0.4.0] - 2026-11-26
 
 ### Added

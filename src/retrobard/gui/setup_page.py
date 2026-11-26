@@ -91,7 +91,7 @@ class SetupPage(QWidget):
         region_layout = QVBoxLayout()
         region_layout.addWidget(self.region_hint)
         region_layout.addWidget(self.selector, 1)
-        region_box = QGroupBox("2. Dialogue area")
+        region_box = self.region_box = QGroupBox("2. Dialogue area")
         region_box.setLayout(region_layout)
 
         # ---- step 3: what is read
@@ -100,13 +100,23 @@ class SetupPage(QWidget):
         self.preview_label.setMinimumHeight(48)
         preview_layout = QVBoxLayout()
         preview_layout.addWidget(self.preview_label)
-        preview_box = QGroupBox("3. What RetroBard reads right now")
+        preview_box = self.preview_box = QGroupBox("3. What RetroBard reads right now")
         preview_box.setLayout(preview_layout)
+
+        # Shown instead of steps 2 and 3 when the dialogue comes from the game's memory
+        self.memory_hint = QLabel(
+            "<b>This game's dialogue is read from its memory</b> (Play tab: <i>Read dialogue "
+            "from</i>), so the dialogue area and the letters aren't needed.<br>Linking the "
+            "window is optional: pick <b>RetroArch</b> in step 1 so the skip keys only act "
+            "while the game is in front."
+        )
+        self.memory_hint.setWordWrap(True)
 
         self.save_button = QPushButton("Save setup")
         self.save_label = QLabel()
 
         right = QVBoxLayout()
+        right.addWidget(self.memory_hint)
         right.addWidget(region_box, 1)
         right.addWidget(preview_box)
         save_row = QHBoxLayout()
@@ -125,6 +135,7 @@ class SetupPage(QWidget):
         state.game_changed.connect(lambda _game: self.load_game())
         state.game_data_saved.connect(lambda _game: self._rebuild_reader())
         state.game_data_saved.connect(lambda _game: self._update_checklist())
+        state.source_changed.connect(lambda _source: self._show_steps_for_source())
         self.guide_button.clicked.connect(self.guide_requested.emit)
 
         self._timer = QTimer(self)
@@ -132,6 +143,7 @@ class SetupPage(QWidget):
         self._timer.timeout.connect(self.update_preview)
 
         self.load_game()
+        self._show_steps_for_source()
 
     # ------------------------------------------------------------------- lifecycle
 
@@ -193,6 +205,16 @@ class SetupPage(QWidget):
         self.save_label.setText("Unsaved changes" if self._dirty else "")
         self._update_checklist()
 
+    def _show_steps_for_source(self) -> None:
+        memory = self.state.reads_memory
+        self.memory_hint.setVisible(memory)
+        self.region_box.setEnabled(not memory)
+        self.preview_box.setEnabled(not memory)
+        if memory:
+            self.selector.set_frame(None)
+            self.preview_label.setText("-")
+        self._update_checklist()
+
     def _update_checklist(self) -> None:
         profile = self.profile
         done = {
@@ -201,9 +223,14 @@ class SetupPage(QWidget):
             "letters": profile is not None
             and setup.load_font(self.state.settings, self.state.game).font.is_usable,
         }
+        memory = self.state.reads_memory
         for key, text in CHECKLIST:
-            mark = "✔" if done[key] else "○"  # check mark / empty circle
             label = self.check_labels[key]
+            # Nothing is read off the screen, so only the window matters (for skip keys)
+            label.setVisible(key == "window" or not memory)
+            if key == "window" and memory:
+                text = "Game window linked (optional, for skip keys)"
+            mark = "✔" if done[key] else "○"  # check mark / empty circle
             label.setText(f"{mark}  {text}")
             label.setStyleSheet("color: rgb(40, 170, 110);" if done[key] else "")
 
@@ -289,6 +316,8 @@ class SetupPage(QWidget):
     # --------------------------------------------------------------------- preview
 
     def update_preview(self) -> None:
+        if self.state.reads_memory:
+            return  # nothing is read off the screen
         if self._source is None:
             self.preview_label.setText("Link the game window first.")
             return

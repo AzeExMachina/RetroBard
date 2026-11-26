@@ -27,6 +27,12 @@ VOWELLESS_INTERJECTIONS = {
 CHOICE_LINE_RE = re.compile(r"^[^A-Za-z0-9]{0,3}[A-Z0-9][\w'\-]*(?: [\w'\-]+){0,3}[.!]?$")
 CHOICE_LINE_MAX_CHARS = 24
 
+# A place name shown on its own: one line of 1-4 capitalized words, with no
+# sentence punctuation ("Residence", "Leene Square", "Mt. Woe", "End of Time").
+# Only an abbreviation inside it may end with a period, so "Crono." stays dialogue.
+PLACE_NAME_MAX_WORDS = 4
+CONNECTOR_WORDS = {"of", "the", "de", "du", "la", "le"}
+
 # Words that often follow "I" in dialogue. OCR can merge the two ("Iheard",
 # "Idon't"), and none of them makes a real word with an "I" in front, so the
 # merged form is always split again. Contractions are listed by their stem
@@ -174,9 +180,22 @@ class DialogueParser:
 
         clean_text = self._sanitize(body_text)
         if (
+            not speaker_key
+            and self.profile.dialogue_rules.skip_place_names
+            and self._is_place_name(body_text)
+        ):
+            # Not part of the conversation: neither spoken nor given to the last speaker
+            report(self.status, StatusKind.DEBUG, f"[PARSER] Place name, not spoken: {clean_text!r}")
+            return None
+        if (
             len(clean_text) < self.profile.dialogue_rules.min_length
             or self._is_gibberish(clean_text)
         ):
+            if speaker_key:
+                # Nothing to say ("RANDI: !?"), but the unnamed lines that follow
+                # are still this character talking
+                self._active_speaker = speaker_key
+                self._last_speaker_time = now
             return None
 
         # Decide final speaker: explicit -> system message check -> remembered speaker -> NARRATOR
@@ -263,6 +282,20 @@ class DialogueParser:
         return "\n".join(lines[: question_idx + 1])
 
     @staticmethod
+    def _is_place_name(text: str) -> bool:
+        text = text.strip()
+        words = text.split(" ")
+        if "\n" in text or not 1 <= len(words) <= PLACE_NAME_MAX_WORDS:
+            return False
+        if words[-1].endswith(".") or words[-1] in CONNECTOR_WORDS:
+            return False
+        return all(
+            (word in CONNECTOR_WORDS and index > 0)
+            or re.fullmatch(r"[A-Z][A-Za-z'\-]*\.?", word) is not None
+            for index, word in enumerate(words)
+        )
+
+    @staticmethod
     def _looks_like_name(candidate: str) -> bool:
         words = candidate.split()
         return 1 <= len(words) <= 3 and all(
@@ -271,7 +304,7 @@ class DialogueParser:
 
     def _is_known_character(self, name: str) -> bool:
         cleaned = self._non_alnum_re.sub("", name.upper()).strip()
-        if cleaned in self.profile.voices.characters:
+        if cleaned in self.profile.voices.characters or cleaned in self.profile.voices.aliases:
             return True
         de_leeted = cleaned.translate(str.maketrans({"0": "O", "1": "I", "5": "S"}))
         return bool(
@@ -282,6 +315,11 @@ class DialogueParser:
         cleaned = self._non_alnum_re.sub("", raw_speaker.upper()).strip()
         if not cleaned:
             return None
+
+        # Another name for a character ("GIRL" before Marle is named): her lines
+        aliases = self.profile.voices.aliases
+        if cleaned in aliases:
+            return aliases[cleaned]
 
         if cleaned in self.profile.voices.characters:
             return cleaned

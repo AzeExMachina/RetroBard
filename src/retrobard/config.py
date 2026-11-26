@@ -7,7 +7,7 @@ from typing import Literal
 from urllib.parse import urlparse
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from retrobard.domain.models import AudioEffect, VoiceProfile
@@ -111,6 +111,9 @@ class DialogueRules(BaseModel):
     min_length: int = 2
     # Drop the answer lines of an in-box choice ("Stay the night?" / "Yes" / "No")
     skip_choices: bool = True
+    # Don't speak a lone place name ("Leene Square", "Mt. Woe") that a game shows
+    # in its dialogue box when you enter an area; it is not anybody talking
+    skip_place_names: bool = False
 
     @field_validator("strip_patterns")
     @classmethod
@@ -159,6 +162,9 @@ class VoicesConfig(BaseModel):
     narrate_unnamed: bool = False
     # Supports both "CRONO: voice_id" and "FROG: {voice_id: ..., speed: 0.88}"
     characters: dict[str, str | CharacterVoiceConfig] = Field(default_factory=dict)
+    # Other names a character goes by, e.g. "GIRL: MARLE" for Chrono Trigger's
+    # lines before Marle is named. Lines from an alias are that character's lines.
+    aliases: dict[str, str] = Field(default_factory=dict)
     female_pool: list[str] = Field(
         default_factory=lambda: [
             "OZ0L6eISlOejga3XjDFt",  # Talia
@@ -207,10 +213,141 @@ class InputConfig(BaseModel):
     cooldown_ms: int = Field(default=250, ge=50)
 
 
+MAX_MEMORY_ADDRESS = 0xFFFFFFFF
+
+
+class MemoryValue(BaseModel):
+    """A little-endian number at an address of the core's memory map."""
+
+    address: int = Field(ge=0, le=MAX_MEMORY_ADDRESS)
+    size: int = Field(default=1, ge=1, le=4)
+
+
+class MemoryFlag(MemoryValue):
+    """Tells whether the dialogue box is open. With `open_values` empty, any
+    non-zero value means open."""
+
+    open_values: list[int] = Field(default_factory=list)
+
+    def is_open(self, value: int) -> bool:
+        return value in self.open_values if self.open_values else value != 0
+
+
+class MemoryPointer(MemoryValue):
+    """Where the current message starts, read from the game's text pointer.
+    A 2-byte pointer is combined with `bank` (address = bank << 16 | pointer)."""
+
+    size: int = Field(default=3, ge=2, le=4)
+    bank: int | None = Field(default=None, ge=0, le=0xFF)
+    offset: int = 0
+
+    def target(self, value: int) -> int:
+        if self.bank is not None:
+            value = (self.bank << 16) | (value & 0xFFFF)
+        return value + self.offset
+
+
+class MemorySpeaker(MemoryValue):
+    """A value naming who is talking, e.g. a portrait or character index."""
+
+    names: dict[int, str] = Field(default_factory=dict)
+
+
+class RomFile(BaseModel):
+    """The game's ROM, for games that print their text straight from the cartridge
+    and keep only a pointer in RAM (e.g. Secret of Mana). `sha1` pins the exact
+    game version the addresses were found for, and makes sure RetroBard never
+    reads any other file. Where the ROM is on this computer is a per-user setting
+    (RomPaths), never part of the profile."""
+
+    sha1: str = Field(pattern=r"^[0-9a-fA-F]{40}$")
+    # How the console's addresses map to file offsets
+    mapping: Literal["hirom", "lorom", "linear"] = "hirom"
+
+
+class MemoryTextConfig(BaseModel):
+    # Where the message is, one of:
+    #  address: a fixed RAM buffer holding it
+    #  pointer: a RAM pointer to its first byte
+    #  cursor:  a RAM pointer that walks through the text as the game prints it.
+    #           The message is complete once the cursor rests on a script command
+    #           (a byte below `command_below`); it is then read backwards from there.
+    address: int | None = Field(default=None, ge=0, le=MAX_MEMORY_ADDRESS)
+    pointer: MemoryPointer | None = None
+    cursor: MemoryPointer | None = None
+    # Read the text from the ROM file instead of RAM (pointer and cursor only)
+    rom: RomFile | None = None
+    # Bytes below this value are script commands, not text. Table entries that
+    # start with one (such as a "insert hero name" code) still count as text.
+    command_below: int = Field(default=0x7F, ge=0, le=0x100)
+    # Cursor mode, for scripts that are pure text: the codes that end a box
+    # (end of message, page break). When set, a box is the text between two of
+    # them and `command_below` is not used.
+    break_codes: list[str | int] = Field(default_factory=list)
+    # Whether the cursor rests on the code that ends the box ("on") or just
+    # past it ("after", where the next message starts)
+    cursor_rests: Literal["on", "after"] = "on"
+    # Only speak a box the cursor was seen moving through. Needed when the game
+    # can jump the cursor over a message that is never shown (e.g. after a choice)
+    require_progress: bool = False
+    max_bytes: int = Field(default=256, ge=1, le=4096)
+    # Byte(s) -> text, in hex ("41": "A", "F012": "the "); applied over table_file
+    table: dict[str | int, str] = Field(default_factory=dict)
+    # A romhacking-style .tbl file next to the profile
+    table_file: str | None = None
+    end_codes: list[str | int] = Field(default_factory=lambda: [0])
+    newline_codes: list[str | int] = Field(default_factory=list)
+    # Control code -> how many argument bytes follow it (skipped, never spoken)
+    control_args: dict[str | int, int] = Field(default_factory=dict)
+    # What to do with a byte the table does not know
+    unknown: Literal["skip", "stop"] = "skip"
+
+    @model_validator(mode="after")
+    def _one_location(self) -> "MemoryTextConfig":
+        locations = [x for x in (self.address, self.pointer, self.cursor) if x is not None]
+        if len(locations) != 1:
+            raise ValueError("set exactly one of text.address, text.pointer and text.cursor")
+        if self.rom is not None and self.address is not None:
+            raise ValueError("text.rom needs text.pointer or text.cursor, not text.address")
+        return self
+
+    @field_validator("table_file")
+    @classmethod
+    def _plain_file_name(cls, name: str | None) -> str | None:
+        if name is not None and Path(name).name != name:
+            raise ValueError("table_file must be a file name next to the profile, not a path")
+        return name
+
+
+class MemoryConfig(BaseModel):
+    """Reads the dialogue straight from the emulator's memory through RetroArch's
+    network commands (network_cmd_enable = true in retroarch.cfg). Addresses are
+    the core's memory map (for SNES cores, work RAM starts at 0x7E0000)."""
+
+    host: str = "127.0.0.1"
+    port: int = Field(default=55355, ge=1, le=65535)
+    # "read_core_memory" uses the core's memory map (addresses as the console sees
+    # them, e.g. 0x7E2000). "read_core_ram" works with cores that have no map but
+    # only reaches work RAM, counted from its start (for SNES, 0x2000 = 0x7E2000).
+    command: Literal["read_core_memory", "read_core_ram"] = "read_core_memory"
+    poll_ms: int = Field(default=50, ge=16, le=1000)
+    # The text must stay the same this long before it is spoken, so a message
+    # the game is still writing is not read half-way
+    settle_ms: int = Field(default=120, ge=0, le=2000)
+    # Bytes asked for per request (RetroArch answers in a single datagram, about
+    # one request per frame, so fewer and bigger requests are faster)
+    chunk_bytes: int = Field(default=512, ge=1, le=4096)
+    box_open: MemoryFlag | None = None
+    speaker: MemorySpeaker | None = None
+    text: MemoryTextConfig
+
+
 class GameProfile(BaseModel):
     game_id: str = Field(pattern=GAME_ID_PATTERN)
     window: WindowBinding | None = None
     ocr: OcrConfig = Field(default_factory=OcrConfig)
+    # Optional: read the text from memory instead of the screen (RetroArch)
+    memory: MemoryConfig | None = None
     dialogue_rules: DialogueRules = Field(default_factory=DialogueRules)
     controls: InputConfig = Field(default_factory=InputConfig)
     voices: VoicesConfig
@@ -230,6 +367,11 @@ class GameProfile(BaseModel):
                 voices["characters"] = {
                     k.strip().upper(): v for k, v in voices["characters"].items()
                 }
+            if isinstance(voices, dict) and isinstance(voices.get("aliases"), dict):
+                voices["aliases"] = {
+                    str(k).strip().upper(): str(v).strip().upper()
+                    for k, v in voices["aliases"].items()
+                }
         return cls.model_validate(data)
 
     def voices_for_custom_server(self, default_voice: str) -> VoicesConfig:
@@ -247,6 +389,7 @@ class GameProfile(BaseModel):
             default_narrator=narrator,
             narrate_unnamed=self.voices.narrate_unnamed,
             characters=characters,
+            aliases=dict(self.voices.aliases),
             female_pool=list(custom.female_pool),
             male_pool=list(custom.male_pool),
         )
@@ -308,6 +451,33 @@ class CustomTTSConfig(BaseModel):
         path.write_text(json.dumps(self.model_dump(), indent=2), encoding="utf-8")
 
 
+class RomPaths(BaseModel):
+    """Where each game's ROM is on this computer, chosen by the user.
+
+    Kept apart from the profiles, which are shared and shipped with the app."""
+
+    games: dict[str, str] = Field(default_factory=dict)
+
+    def get(self, game: str) -> Path | None:
+        path = self.games.get(game)
+        return Path(path) if path else None
+
+    def set(self, game: str, path: Path) -> None:
+        if not is_valid_game_id(game):
+            raise ValueError(GAME_ID_HINT)
+        self.games[game] = str(path)
+
+    @classmethod
+    def load(cls, path: Path) -> "RomPaths":
+        if not path.exists():
+            return cls()
+        return cls.model_validate(json.loads(path.read_text(encoding="utf-8")))
+
+    def save(self, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(self.model_dump(), indent=2), encoding="utf-8")
+
+
 class AppSettings(BaseSettings):
     # The packaged app reads optional overrides from %APPDATA%\RetroBard\settings.env
     model_config = SettingsConfigDict(
@@ -353,6 +523,12 @@ class AppSettings(BaseSettings):
         default_factory=lambda: user_data_dir() / "custom_tts.json"
         if is_frozen()
         else Path("./custom_tts.json")
+    )
+    # Where the user's ROMs are, for games whose text is read from the ROM
+    rom_paths_file: Path = Field(
+        default_factory=lambda: user_data_dir() / "rom_paths.json"
+        if is_frozen()
+        else Path("./rom_paths.json")
     )
     # Overrides the saved key for the custom server (development)
     custom_tts_api_key: str = Field(default="", validation_alias="CUSTOM_TTS_API_KEY")

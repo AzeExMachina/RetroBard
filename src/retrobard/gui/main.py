@@ -86,7 +86,11 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(make_icon())
         self.resize(980, 680)
 
-        self.state = AppState(settings, last_game=str(self.ui_settings.value(LAST_GAME_KEY, "") or ""))
+        self.state = AppState(
+            settings,
+            last_game=str(self.ui_settings.value(LAST_GAME_KEY, "") or ""),
+            ui_settings=self.ui_settings,
+        )
         self.bridge = StatusBridge()
         self.updater = Updater(self)
         self.updater.restart_requested.connect(self.quit)
@@ -133,7 +137,9 @@ class MainWindow(QMainWindow):
         self.play_page.teach_requested.connect(lambda: self.tabs.setCurrentWidget(self.letters_page))
         self.play_page.running_changed.connect(self._on_running_changed)
         self.setup_page.guide_requested.connect(self.show_quick_start)
+        self.state.source_changed.connect(lambda _source: self._show_tabs_for_source())
         self._fill_games()
+        self._show_tabs_for_source()
 
         self.tray: QSystemTrayIcon | None = None
         if QSystemTrayIcon.isSystemTrayAvailable():
@@ -162,6 +168,18 @@ class MainWindow(QMainWindow):
             # Switching games while one is being voiced would be confusing: stop first
             self.play_page.stop()
         self.state.select_game(game)
+
+    def _show_tabs_for_source(self) -> None:
+        """Reading the game's memory needs no letters: the Letters tab is switched off."""
+        index = self.tabs.indexOf(self.letters_page)
+        needed = not self.state.reads_memory
+        if not needed and self.tabs.currentIndex() == index:
+            # Before disabling it, or Qt moves on to the next tab instead
+            self.tabs.setCurrentWidget(self.play_page)
+        self.tabs.setTabEnabled(index, needed)
+        self.tabs.setTabToolTip(
+            index, "" if needed else "Not needed: the dialogue is read from the game's memory"
+        )
 
     def ask_new_game(self) -> None:
         name, accepted = QInputDialog.getText(

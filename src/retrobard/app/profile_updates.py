@@ -114,6 +114,44 @@ def add_shipped_custom_voices(profile: GameProfile, shipped: GameProfile) -> boo
     return bool(add_shipped_characters(profile.custom_voices, shipped.custom_voices))
 
 
+def add_shipped_aliases(profile: GameProfile, shipped: GameProfile) -> bool:
+    """Adds the shipped character aliases the user's profile does not have yet,
+    keeping any alias the user set up. Returns whether anything was added."""
+    missing = {k: v for k, v in shipped.voices.aliases.items() if k not in profile.voices.aliases}
+    profile.voices.aliases.update(missing)
+    return bool(missing)
+
+
+def add_new_dialogue_rules(profile: GameProfile, shipped: GameProfile) -> bool:
+    """Takes the shipped value of every dialogue rule the user's profile file
+    does not mention, i.e. rules added in a newer RetroBard. A rule the file
+    sets, even to the default, is the user's and is kept. Returns whether
+    anything changed."""
+    rules = profile.dialogue_rules
+    changed = False
+    for name in type(rules).model_fields:
+        if name in rules.model_fields_set:
+            continue
+        value = getattr(shipped.dialogue_rules, name)
+        if getattr(rules, name) != value:
+            setattr(rules, name, value)
+            changed = True
+    return changed
+
+
+def sync_shipped_memory(profile: GameProfile, shipped: GameProfile) -> bool:
+    """Gives `profile` the shipped way of reading the game's text from memory.
+
+    The addresses and text table belong to the app (they are found for one exact
+    ROM, and nothing in the app edits them), so a shipped `memory` section always
+    replaces the user's copy. A game the app ships none for is left alone.
+    Returns whether anything changed."""
+    if shipped.memory is None or profile.memory == shipped.memory:
+        return False
+    profile.memory = shipped.memory.model_copy(deep=True)
+    return True
+
+
 def update_profiles(bundled: Path | None, profiles_dir: Path) -> list[str]:
     """Updates the voices in every profile in `profiles_dir` and saves the ones
     that changed. Returns the games it updated.
@@ -133,6 +171,9 @@ def update_profiles(bundled: Path | None, profiles_dir: Path) -> list[str]:
                 shipped = GameProfile.from_yaml(shipped_path)
                 changed = bool(add_shipped_characters(profile.voices, shipped.voices)) or changed
                 changed = add_shipped_custom_voices(profile, shipped) or changed
+                changed = sync_shipped_memory(profile, shipped) or changed
+                changed = add_shipped_aliases(profile, shipped) or changed
+                changed = add_new_dialogue_rules(profile, shipped) or changed
             if changed:
                 profile.save_to_yaml(path)
                 updated.append(path.stem)

@@ -202,6 +202,32 @@ class TestMultiBoxContextAndVoicePools:
         assert unnamed_npc is not None
         assert unnamed_npc.speaker == "NARRATOR"
 
+    def test_an_alias_speaks_exactly_like_its_character(self, sample_profile: GameProfile) -> None:
+        sample_profile.voices.aliases = {"GIRL": "MOM"}
+        parser = DialogueParser(sample_profile)
+        mom = parser.parse("MOM: Crono, wake up!")
+        girl = parser.parse("GIRL: Ouch, that hurt!")
+        assert girl is not None and mom is not None
+        assert girl.speaker == "MOM"
+        assert girl.voice == mom.voice
+        # Unnamed lines after it carry on as her
+        assert parser.parse("I'm so sorry!").speaker == "MOM"
+
+    def test_aliases_reach_the_custom_server_voices(self, sample_profile: GameProfile) -> None:
+        sample_profile.voices.aliases = {"GIRL": "MOM"}
+        voices = sample_profile.voices_for_custom_server("af_heart")
+        assert voices.aliases == {"GIRL": "MOM"}
+
+    def test_a_named_line_too_short_to_speak_still_sets_the_speaker(
+        self, sample_profile: GameProfile
+    ) -> None:
+        sample_profile.voices.narrate_unnamed = False
+        parser = DialogueParser(sample_profile)
+        assert parser.parse("MOM:!?") is None  # nothing to say out loud
+        follow_up = parser.parse("Say what?")
+        assert follow_up is not None
+        assert follow_up.speaker == "MOM"
+
     def test_deterministic_npc_pool_and_tuning_variation(
         self, sample_profile: GameProfile
     ) -> None:
@@ -263,6 +289,50 @@ class TestChoiceSkipping:
 
         assert result is not None
         assert result.clean_text == "Will you rest? Yes No"
+
+
+class TestPlaceNames:
+    @pytest.mark.parametrize(
+        "banner", ["Residence", "Leene Square", "Mt. Woe", "End of Time", "Lucca's House", "Zenan Bridge"]
+    )
+    def test_a_place_name_is_not_spoken_or_given_to_the_last_speaker(
+        self, sample_profile: GameProfile, banner: str
+    ) -> None:
+        sample_profile.dialogue_rules.skip_place_names = True
+        parser = DialogueParser(sample_profile)
+        assert parser.parse("MOM: Have fun at the fair!") is not None
+        assert parser.parse(banner) is None
+        # The conversation itself carries on as before
+        assert parser.parse("Don't be late!").speaker == "MOM"
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "Crono.",
+            "Hey!!",
+            "Uh oh...",
+            "Over here, Crono",
+            "Is it you?",
+            "Go to the",
+            "Leene Square\nis that way",
+        ],
+    )
+    def test_dialogue_is_still_spoken(self, sample_profile: GameProfile, line: str) -> None:
+        sample_profile.dialogue_rules.skip_place_names = True
+        parser = DialogueParser(sample_profile)
+        parser.parse("MOM: Have fun at the fair!")
+        result = parser.parse(line)
+        assert result is not None and result.speaker == "MOM"
+
+    def test_named_lines_are_never_place_names(self, sample_profile: GameProfile) -> None:
+        sample_profile.dialogue_rules.skip_place_names = True
+        result = DialogueParser(sample_profile).parse("MARLE: Leene Square")
+        assert result is not None and result.speaker == "MARLE"
+
+    def test_off_by_default(self, sample_profile: GameProfile) -> None:
+        parser = DialogueParser(sample_profile)
+        parser.parse("MOM: Have fun at the fair!")
+        assert parser.parse("Leene Square").speaker == "MOM"
 
 
 class TestNarratorOption:

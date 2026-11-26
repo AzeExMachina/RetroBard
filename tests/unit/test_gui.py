@@ -16,7 +16,7 @@ from test_session import SilentPlayer
 
 from retrobard.adapters.ocr.glyph_reader import GlyphFont
 from retrobard.app import session as session_module
-from retrobard.app.session import TTSBackend
+from retrobard.app.session import InputSource, TTSBackend
 from retrobard.config import AppSettings, GameProfile, NormRect, WindowBinding
 from retrobard.domain.status import StatusEvent, StatusKind
 from retrobard.gui.main import MainWindow
@@ -630,3 +630,59 @@ class TestLastGame:
             assert again.game_combo.currentText() == "chrono_trigger"
         finally:
             again.shutdown()
+
+
+class TestMemorySource:
+    @staticmethod
+    def _add_memory_game(window: MainWindow) -> None:
+        from retrobard.config import MemoryConfig, MemoryTextConfig
+
+        settings = window.state.settings
+        profile = GameProfile.from_yaml(settings.profiles_dir / "chrono_trigger.yaml")
+        profile.memory = MemoryConfig(text=MemoryTextConfig(address=0x10))
+        profile.save_to_yaml(settings.profiles_dir / "mana.yaml")
+        window.state.games_changed.emit()
+        window.state.select_game("mana")
+
+    def test_memory_is_only_offered_for_games_that_support_it(self, window: MainWindow) -> None:
+        sources = window.play_page.source_combo
+        assert sources.findData(InputSource.MEMORY) < 0
+        self._add_memory_game(window)
+        assert sources.findData(InputSource.MEMORY) >= 0
+
+    def test_reading_memory_switches_off_the_screen_reading_steps(self, window: MainWindow) -> None:
+        self._add_memory_game(window)
+        letters = window.tabs.indexOf(window.letters_page)
+        setup_page = window.setup_page
+        window.tabs.setCurrentWidget(window.letters_page)
+
+        sources = window.play_page.source_combo
+        sources.setCurrentIndex(sources.findData(InputSource.MEMORY))
+
+        assert window.state.reads_memory
+        assert not window.tabs.isTabEnabled(letters)
+        assert window.tabs.currentWidget() is window.play_page
+        assert not setup_page.region_box.isEnabled() and not setup_page.preview_box.isEnabled()
+        assert not setup_page.memory_hint.isHidden()
+        assert setup_page.check_labels["letters"].isHidden()
+        assert not setup_page.check_labels["window"].isHidden()
+
+        sources.setCurrentIndex(sources.findData(InputSource.OCR))
+        assert window.tabs.isTabEnabled(letters)
+        assert setup_page.region_box.isEnabled()
+        assert setup_page.memory_hint.isHidden()
+
+    def test_each_game_remembers_its_source(self, window: MainWindow) -> None:
+        self._add_memory_game(window)
+        sources = window.play_page.source_combo
+        sources.setCurrentIndex(sources.findData(InputSource.MEMORY))
+
+        window.state.select_game("chrono_trigger")
+        assert window.state.source == InputSource.OCR
+        assert window.tabs.isTabEnabled(window.tabs.indexOf(window.letters_page))
+
+        window.state.select_game("mana")
+        assert sources.currentData() == InputSource.MEMORY
+        assert not window.tabs.isTabEnabled(window.tabs.indexOf(window.letters_page))
+        # And after a restart
+        assert window.ui_settings.value("source/mana") == "memory"

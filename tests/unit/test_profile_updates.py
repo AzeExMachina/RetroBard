@@ -189,6 +189,48 @@ class TestUpdateProfiles:
         assert custom.default_narrator == "af_heart"
         assert custom.characters == {"FROG": "my_frog", "MAGUS": "am_fenrir"}
 
+    def test_brings_in_and_refreshes_the_shipped_memory_section(self, tmp_path: Path) -> None:
+        shipped_dir, user_dir = tmp_path / "shipped", tmp_path / "user"
+        shipped = _write(shipped_dir / "chrono_trigger.yaml", SHIPPED_PROFILE + SHIPPED_MEMORY)
+        user_path = _write(user_dir / "chrono_trigger.yaml", USER_PROFILE)
+
+        assert update_profiles(shipped_dir, user_dir) == ["chrono_trigger"]
+        memory = GameProfile.from_yaml(user_path).memory
+        assert memory is not None and memory.text.cursor.address == 0x1D01
+        assert update_profiles(shipped_dir, user_dir) == []  # up to date
+
+        # A newer app with corrected addresses replaces the old ones
+        shipped.write_text(
+            shipped.read_text(encoding="utf-8").replace("0x1D01", "0x1D04"), encoding="utf-8"
+        )
+        assert update_profiles(shipped_dir, user_dir) == ["chrono_trigger"]
+        assert GameProfile.from_yaml(user_path).memory.text.cursor.address == 0x1D04
+        # The user's own settings are untouched
+        assert GameProfile.from_yaml(user_path).ocr.binary_threshold == 123
+
+
+def test_adds_shipped_aliases_and_keeps_the_users_own(tmp_path: Path) -> None:
+    shipped_dir, user_dir = tmp_path / "shipped", tmp_path / "user"
+    _write(
+        shipped_dir / "chrono_trigger.yaml",
+        SHIPPED_PROFILE.replace("voices:\n", "voices:\n  aliases: {girl: marle, KID: CRONO}\n", 1),
+    )
+    user_path = _write(
+        user_dir / "chrono_trigger.yaml",
+        USER_PROFILE.replace("voices:\n", "voices:\n  aliases: {KID: LUCCA}\n", 1),
+    )
+    assert update_profiles(shipped_dir, user_dir) == ["chrono_trigger"]
+    assert GameProfile.from_yaml(user_path).voices.aliases == {"KID": "LUCCA", "GIRL": "MARLE"}
+    assert update_profiles(shipped_dir, user_dir) == []
+
+
+SHIPPED_MEMORY = """\
+memory:
+  command: read_core_ram
+  text:
+    cursor: {address: 0x1D01, size: 3}
+    rom: {sha1: 8133041a363e3cc68cedef40b49b6d20d03c505d}
+"""
 
 SHIPPED_CUSTOM = """\
 custom_voices:
@@ -227,3 +269,28 @@ class TestShippedVoicesStayAvailable:
         for path in shipped.glob("*.yaml"):
             voices = GameProfile.from_yaml(path).voices
             assert replace_retired_voices(voices) == 0, path.name
+
+
+def test_new_dialogue_rules_arrive_but_the_users_own_stay(tmp_path: Path) -> None:
+    shipped_dir, user_dir = tmp_path / "shipped", tmp_path / "user"
+    rules = "dialogue_rules:\n  skip_choices: true\n  skip_place_names: true\n"
+    _write(shipped_dir / "chrono_trigger.yaml", SHIPPED_PROFILE + rules)
+    # Saved by an older RetroBard: no skip_place_names, choices turned off by the user
+    user_path = _write(
+        user_dir / "chrono_trigger.yaml", USER_PROFILE + "dialogue_rules:\n  skip_choices: false\n"
+    )
+    assert update_profiles(shipped_dir, user_dir) == ["chrono_trigger"]
+    updated = GameProfile.from_yaml(user_path).dialogue_rules
+    assert updated.skip_place_names is True
+    assert updated.skip_choices is False
+    assert update_profiles(shipped_dir, user_dir) == []
+
+
+def test_a_rule_the_user_turned_off_stays_off(tmp_path: Path) -> None:
+    shipped_dir, user_dir = tmp_path / "shipped", tmp_path / "user"
+    _write(shipped_dir / "chrono_trigger.yaml", SHIPPED_PROFILE + "dialogue_rules:\n  skip_place_names: true\n")
+    user_path = _write(
+        user_dir / "chrono_trigger.yaml", USER_PROFILE + "dialogue_rules:\n  skip_place_names: false\n"
+    )
+    update_profiles(shipped_dir, user_dir)
+    assert GameProfile.from_yaml(user_path).dialogue_rules.skip_place_names is False

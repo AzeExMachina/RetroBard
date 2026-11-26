@@ -19,6 +19,10 @@ from retrobard.adapters.cache.sqlite_disk import SqliteDiskCache
 from retrobard.adapters.capture.win32_window import Win32WindowSource
 from retrobard.adapters.ocr.glyph_reader import GlyphFont, GlyphReader
 from retrobard.adapters.producers.ocr_watcher import OcrWatcher
+from retrobard.adapters.producers.retroarch_memory import (
+    RetroArchMemoryWatcher,
+    rom_mismatch,
+)
 from retrobard.adapters.producers.skip_input import SkipInputWatcher
 from retrobard.adapters.producers.udp_listener import UdpListener, load_or_create_token
 from retrobard.adapters.producers.win32_input import make_key_reader, make_pad_reader
@@ -31,6 +35,7 @@ from retrobard.config import (
     AppSettings,
     CustomTTSConfig,
     GameProfile,
+    RomPaths,
     is_valid_game_id,
 )
 from retrobard.credentials import custom_tts_api_key, elevenlabs_api_key
@@ -50,6 +55,8 @@ class InputSource(str, Enum):
     OCR = "ocr"
     UDP = "udp"
     BOTH = "both"
+    # The game's memory, read through RetroArch (needs a `memory:` profile section)
+    MEMORY = "memory"
 
 
 MB = 1_000_000
@@ -100,6 +107,41 @@ def load_profile(settings: AppSettings, game: str) -> GameProfile:
         return GameProfile.from_yaml(profile_path(settings, game))
     except FileNotFoundError as exc:
         raise SessionError(f"There is no profile for the game '{game}' yet.") from exc
+
+
+def needs_rom(profile: GameProfile) -> bool:
+    """Whether the game's text is read from its ROM (memory source only)."""
+    return profile.memory is not None and profile.memory.text.rom is not None
+
+
+def saved_rom_path(settings: AppSettings, game: str) -> Path | None:
+    """The ROM the user chose for this game, if it is still there."""
+    try:
+        path = RomPaths.load(settings.rom_paths_file).get(game)
+    except (OSError, ValueError):
+        return None
+    return path if path is not None and path.is_file() else None
+
+
+def choose_rom(settings: AppSettings, game: str, path: Path) -> None:
+    """Remembers `path` as this user's ROM for `game`, after checking it is the
+    exact game version the profile was made for."""
+    profile = load_profile(settings, game)
+    if not needs_rom(profile):
+        raise SessionError(f"The profile for '{game}' does not read text from a ROM.")
+    try:
+        data = path.read_bytes()
+    except OSError as exc:
+        raise SessionError(f"Could not read {path}: {exc}") from exc
+    problem = rom_mismatch(data, profile.memory.text.rom, path.name)
+    if problem:
+        raise SessionError(problem)
+    try:
+        paths = RomPaths.load(settings.rom_paths_file)
+    except (OSError, ValueError):
+        paths = RomPaths()  # unreadable: start again rather than refuse
+    paths.set(game, path.resolve())
+    paths.save(settings.rom_paths_file)
 
 
 def load_custom_tts(settings: AppSettings) -> CustomTTSConfig:
@@ -217,6 +259,7 @@ class VoiceSession:
         self._game_window: Win32WindowSource | None = None
         self._ocr_watcher: OcrWatcher | None = None
         self._udp_listener: UdpListener | None = None
+        self._memory_watcher: RetroArchMemoryWatcher | None = None
         self._skip_input: SkipInputWatcher | None = None
 
     @property
@@ -274,6 +317,9 @@ class VoiceSession:
 
         if options.source in (InputSource.UDP, InputSource.BOTH):
             self._start_udp(orchestrator)
+
+        if options.source == InputSource.MEMORY:
+            self._start_memory(profile, orchestrator)
 
         if self._game_window and profile.controls.enabled:
             self._skip_input = SkipInputWatcher(
@@ -349,6 +395,43 @@ class VoiceSession:
             f"(this computer only; packets must carry the token from {token_source})"
         )
 
+    def _start_memory(self, profile: GameProfile, orchestrator: VoiceOrchestrator) -> None:
+        if profile.memory is None:
+            raise SessionError(
+                f"The profile for '{profile.game_id}' has no `memory:` section, so its "
+                f"text cannot be read from memory. Read it from the game window instead."
+            )
+        rom_path = None
+        if needs_rom(profile):
+            rom_path = saved_rom_path(self.settings, profile.game_id)
+            if rom_path is None:
+                raise SessionError(
+                    f"'{profile.game_id}' reads its text from the game's ROM, but no ROM "
+                    f"has been chosen yet (or it was moved). Press Start in the window to "
+                    f"choose it, or run: retrobard set-rom --game {profile.game_id} <file>"
+                )
+        # A character table shipped with the app is used unless the user has their own
+        table_dir = self.settings.profiles_dir
+        table = profile.memory.text.table_file
+        bundled = self.settings.bundled_profiles_dir
+        if table and bundled and not (table_dir / table).exists():
+            table_dir = bundled
+        try:
+            self._memory_watcher = RetroArchMemoryWatcher(
+                profile.memory,
+                profile_dir=table_dir,
+                rom_path=rom_path,
+                debug=self.options.verbose,
+                status=self.status,
+            )
+        except (ValueError, OSError) as exc:
+            raise SessionError(f"Could not set up reading from RetroArch: {exc}") from exc
+        self._memory_watcher.start(orchestrator.submit_event)
+        self._info(
+            f"Reading dialogue from RetroArch's memory on udp://{profile.memory.host}:"
+            f"{profile.memory.port} (read only)"
+        )
+
     def stop(self) -> None:
         """Stops everything that was started. Safe to call more than once."""
         was_running = self._running
@@ -360,6 +443,8 @@ class VoiceSession:
             self._ocr_watcher.stop()
         if self._udp_listener:
             self._udp_listener.stop()
+        if self._memory_watcher:
+            self._memory_watcher.stop()
         if self._orchestrator:
             self._orchestrator.shutdown()
             if self._worker and self._worker.is_alive():
@@ -374,6 +459,7 @@ class VoiceSession:
             self._game_window.close()
 
         self._skip_input = self._ocr_watcher = self._udp_listener = None
+        self._memory_watcher = None
         self._orchestrator = self._worker = self._game_window = None
         if was_running:
             report(self.status, StatusKind.SESSION, "RetroBard stopped.", running=False)

@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Davide Aldegheri
 # SPDX-License-Identifier: GPL-3.0-or-later
+import hashlib
 import json
 import socket
 import time
@@ -17,7 +18,13 @@ from retrobard.app.session import (
     TTSBackend,
     VoiceSession,
 )
-from retrobard.config import AppSettings, GameProfile, WindowBinding
+from retrobard.config import (
+    AppSettings,
+    GameProfile,
+    MemoryConfig,
+    RomPaths,
+    WindowBinding,
+)
 from retrobard.domain.models import AudioEffect
 from retrobard.domain.status import StatusEvent, StatusKind
 
@@ -58,6 +65,7 @@ def settings(tmp_path: Path, sample_profile: GameProfile, monkeypatch) -> AppSet
         cache_dir=tmp_path / "cache",
         profiles_dir=tmp_path / "profiles",
         custom_tts_file=tmp_path / "custom_tts.json",
+        rom_paths_file=tmp_path / "rom_paths.json",
         udp_port=0,
         udp_token=TOKEN,
     )
@@ -172,6 +180,75 @@ class TestStartFailures:
         assert not session.running
         assert session._worker is None
         assert session._orchestrator is None
+
+
+class TestRomChoice:
+    """Games whose text is read from the ROM: the path is a per-user setting."""
+
+    ROM = b"\x00" * 0x8000
+
+    @pytest.fixture
+    def rom_game(self, settings: AppSettings, sample_profile: GameProfile) -> GameProfile:
+        profile = sample_profile.model_copy(deep=True)
+        profile.memory = MemoryConfig(
+            command="read_core_ram",
+            text={
+                "cursor": {"address": 0x1D01},
+                "rom": {"sha1": hashlib.sha1(self.ROM).hexdigest()},
+            },
+        )
+        profile.save_to_yaml(settings.profiles_dir / "chrono_trigger.yaml")
+        return profile
+
+    def _memory_session(self, settings: AppSettings) -> VoiceSession:
+        return VoiceSession(
+            settings,
+            SessionOptions(game="chrono_trigger", source=InputSource.MEMORY),
+            status=lambda _: None,
+        )
+
+    def test_profile_keeps_no_path(self, settings: AppSettings, rom_game) -> None:
+        saved = (settings.profiles_dir / "chrono_trigger.yaml").read_text(encoding="utf-8")
+        assert "path" not in saved
+
+    def test_starting_without_a_rom_says_how_to_choose_one(
+        self, settings: AppSettings, rom_game
+    ) -> None:
+        session = self._memory_session(settings)
+        with pytest.raises(SessionError, match="set-rom"):
+            session.start()
+        assert not session.running
+
+    def test_choosing_the_right_rom_saves_it_per_user(
+        self, settings: AppSettings, rom_game, tmp_path: Path
+    ) -> None:
+        rom = tmp_path / "game.sfc"
+        rom.write_bytes(self.ROM)
+        session_module.choose_rom(settings, "chrono_trigger", rom)
+        assert session_module.saved_rom_path(settings, "chrono_trigger") == rom.resolve()
+        assert RomPaths.load(settings.rom_paths_file).get("chrono_trigger") == rom.resolve()
+
+    def test_a_different_rom_is_refused(self, settings: AppSettings, rom_game, tmp_path: Path) -> None:
+        other = tmp_path / "other.sfc"
+        other.write_bytes(b"\x01" * 0x8000)
+        with pytest.raises(SessionError, match="not the ROM"):
+            session_module.choose_rom(settings, "chrono_trigger", other)
+        assert not settings.rom_paths_file.exists()
+
+    def test_a_moved_rom_counts_as_not_chosen(
+        self, settings: AppSettings, rom_game, tmp_path: Path
+    ) -> None:
+        rom = tmp_path / "game.sfc"
+        rom.write_bytes(self.ROM)
+        session_module.choose_rom(settings, "chrono_trigger", rom)
+        rom.unlink()
+        assert session_module.saved_rom_path(settings, "chrono_trigger") is None
+
+    def test_games_without_a_rom_section_refuse_one(self, settings: AppSettings, tmp_path: Path) -> None:
+        rom = tmp_path / "game.sfc"
+        rom.write_bytes(self.ROM)
+        with pytest.raises(SessionError, match="does not read text from a ROM"):
+            session_module.choose_rom(settings, "chrono_trigger", rom)
 
 
 class TestSetupFunctions:

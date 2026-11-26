@@ -3,6 +3,7 @@
 """packaging/build.py: what may never end up in a tester build."""
 
 import importlib.util
+import os
 from pathlib import Path
 
 import pytest
@@ -43,6 +44,31 @@ class TestForbiddenFiles:
         (tmp_path / "RetroBard-0.2.1-windows.zip").write_bytes(b"x")
         (tmp_path / "README.txt").write_text("hi", encoding="utf-8")
         assert build.find_forbidden_files(tmp_path) == []
+
+
+def test_openssl_from_another_program_is_caught(build, tmp_path: Path) -> None:
+    python_dlls, bundle = tmp_path / "python", tmp_path / "dist" / "_internal"
+    packages = tmp_path / "site-packages"
+    for folder in (python_dlls, bundle / "pygame", packages / "pygame"):
+        folder.mkdir(parents=True)
+    (python_dlls / "libcrypto-3-x64.dll").write_bytes(b"python's openssl")
+    (python_dlls / "libffi-8.dll").write_bytes(b"ffi")
+    (python_dlls / "zlib1.dll").write_bytes(b"python's zlib")
+    (packages / "pygame" / "zlib1.dll").write_bytes(b"pygame's zlib")
+    (bundle / "libcrypto-3-x64.dll").write_bytes(b"git's older openssl")
+    (bundle / "libffi-8.dll").write_bytes(b"ffi")
+    (bundle / "zlib1.dll").write_bytes(b"pygame's zlib")  # a package's own copy: fine
+    (bundle / "pygame" / "zlib1.dll").write_bytes(b"pygame's zlib")
+    (bundle / "Qt6Core.dll").write_bytes(b"not one of Python's")
+
+    assert build.find_foreign_python_dlls(bundle.parent, python_dlls, packages) == [
+        bundle / "libcrypto-3-x64.dll"
+    ]
+
+
+def test_pyinstaller_finds_pythons_own_dlls_first(build) -> None:
+    first = build.pyinstaller_env()["PATH"].split(os.pathsep)[0]
+    assert Path(first) == build.python_dll_dir()
 
 
 def test_third_party_notices(build, tmp_path: Path) -> None:

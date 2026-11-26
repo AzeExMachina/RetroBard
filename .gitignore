@@ -49,3 +49,6 @@ packaging/build/
 
 # Custom voice server settings (running from source)
 custom_tts.json
+
+# Where your ROMs are (running from source)
+rom_paths.json

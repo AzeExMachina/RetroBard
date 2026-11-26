@@ -235,6 +235,57 @@ def draw_voice_choice(p: QPainter, palette: QPalette) -> None:
                 _cursor(p, rect.right() - 20, rect.bottom() - 8)
 
 
+def _toggle(p: QPainter, rect: QRect, label: str, value: str, on: bool, palette: QPalette) -> None:
+    """A RetroArch-style settings row: the setting on the left, its value on the right."""
+    p.setPen(palette.color(QPalette.ColorRole.Text))
+    p.setFont(_font(11))
+    p.drawText(rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, label)
+    p.setPen(ACCENT if on else palette.color(QPalette.ColorRole.Text))
+    p.setFont(_font(11, bold=on))
+    p.drawText(rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight, value)
+
+
+def draw_memory_reading(p: QPainter, palette: QPalette) -> None:
+    """RetroArch with network commands on, and RetroBard reading from its memory."""
+    left = _window_frame(p, QRect(10, 20, 200, 150), "RetroArch - Network", palette)
+    row = QRect(left.x() + 10, left.y() + 12, left.width() - 20, 22)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(palette.color(QPalette.ColorRole.AlternateBase))
+    p.drawRect(row.adjusted(-4, 0, 4, 0))
+    _toggle(p, row, "Network Commands", "ON", True, palette)
+    _toggle(p, row.translated(0, 30), "Command Port", "55355", False, palette)
+    _toggle(p, row.translated(0, 60), "Netplay", "OFF", False, palette)
+
+    # Arrow: RetroBard asks RetroArch for the game's memory
+    p.setPen(QPen(ACCENT, 3))
+    ay = 95
+    p.drawLine(218, ay, 238, ay)
+    p.setBrush(ACCENT)
+    p.drawPolygon(QPolygon([QPoint(246, ay), QPoint(236, ay - 6), QPoint(236, ay + 6)]))
+
+    right = _window_frame(p, QRect(252, 20, 180, 150), "RetroBard - Play", palette)
+    p.setPen(palette.color(QPalette.ColorRole.Text))
+    p.setFont(_font(11))
+    p.drawText(right.adjusted(10, 10, 0, 0), Qt.AlignmentFlag.AlignTop, "Read dialogue from")
+    combo = QRect(right.x() + 10, right.y() + 30, right.width() - 20, 26)
+    p.setPen(QPen(ACCENT, 2))
+    p.setBrush(palette.color(QPalette.ColorRole.Button))
+    p.drawRoundedRect(combo, 4, 4)
+    p.setPen(palette.color(QPalette.ColorRole.ButtonText))
+    p.setFont(_font(10))
+    p.drawText(combo.adjusted(6, 0, -14, 0), Qt.AlignmentFlag.AlignVCenter, "Game memory (RetroArch)")
+    p.drawText(combo.adjusted(0, 0, -6, 0),
+               Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight, "v")
+    p.setPen(palette.color(QPalette.ColorRole.Text))
+    p.setFont(_font(11))
+    p.drawText(right.adjusted(10, 70, -6, 0), Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap,
+               "GIRL: Ouch, that hurt!")
+    p.setPen(palette.color(QPalette.ColorRole.PlaceholderText))
+    p.drawText(right.adjusted(10, 92, -6, 0), Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap,
+               "No OCR, no letters to teach")
+    _cursor(p, combo.center().x() + 20, combo.bottom() - 8)
+
+
 def draw_start(p: QPainter, palette: QPalette) -> None:
     inside = _window_frame(p, QRect(60, 10, 320, 196), "Play", palette)
     combo = QRect(inside.x() + 20, inside.y() + 22, inside.width() - 40, 30)
@@ -340,6 +391,21 @@ STEPS = [
         "create a key with Text to Speech access, and paste it.<br>"
         "Keys are kept in Windows Credential Manager on this computer.",
         draw_voice_choice,
+    ),
+    Step(
+        "Optional: read the text from game memory",
+        "For <b>Secret of Mana</b> and <b>Chrono Trigger</b> (USA versions), RetroBard can "
+        "read the dialogue straight from the game's memory instead of the screen. It's "
+        "exact even on see-through text boxes, and you can <b>skip linking the window, "
+        "selecting the box and teaching letters</b>.<br>"
+        "&bull; Play the game in <b>RetroArch</b> with the <b>Snes9x</b> core.<br>"
+        "&bull; In RetroArch: <b>Settings &gt; Network</b>, turn on <b>Network Commands</b> "
+        "and leave the port at <b>55355</b>.<br>"
+        "&bull; On the <b>Play</b> tab, set <b>Read dialogue from</b> to <b>Game memory "
+        "(RetroArch)</b>. The first time you press Start, choose the game's ROM file: "
+        "the text is read from there, so it must be the exact version the profile "
+        "was made for. Its location is remembered, and it never leaves your computer.",
+        draw_memory_reading,
     ),
     Step(
         "Press Start",

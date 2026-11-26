@@ -54,6 +54,26 @@ class TextDecoder:
         self._breaks = {parse_hex_bytes(c) for c in config.break_codes}
         self._unknown = config.unknown
 
+    def add_entries(self, entries: dict[bytes, str]) -> None:
+        """Adds table entries; the ones already in the table win."""
+        for code, text in entries.items():
+            self._table.setdefault(code, text)
+        self._longest = max((len(code) for code in self._table), default=1)
+
+    def letters(self, data: bytes) -> str | None:
+        """`data` as plain table text, spaces kept; None if a byte is not in the table."""
+        out: list[str] = []
+        i = 0
+        while i < len(data):
+            for size in range(min(self._longest, len(data) - i), 0, -1):
+                if data[i : i + size] in self._table:
+                    out.append(self._table[data[i : i + size]])
+                    i += size
+                    break
+            else:
+                return None
+        return "".join(out)
+
     def is_break(self, byte: int, command_below: int) -> bool:
         """Whether `byte` ends a box: one of the break codes if there are any,
         otherwise any script command."""

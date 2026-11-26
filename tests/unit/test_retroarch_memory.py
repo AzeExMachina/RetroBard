@@ -393,3 +393,74 @@ def test_shipped_mana_table_reads_numbers_and_symbols() -> None:
     # "re-energized", "L/R buttons"
     assert decoder.decode(bytes.fromhex("92 85 c6 85 8e 85 92 87 89 9a 85 84")) == "re-energized"
     assert decoder.decode(bytes.fromhex("a6 c1 ac")) == "L/R"
+
+
+class TestRomDictionary:
+    """Modelled on Chrono Trigger: one-byte letter groups whose text sits in the
+    ROM's own table (2-byte pointers from code 0, then length + letters)."""
+
+    LETTERS = {f"{0xA0 + i:02X}": chr(ord("A") + i) for i in range(26)} | {"EF": " "}
+
+    @staticmethod
+    def ct(text: str) -> bytes:
+        return bytes(0xEF if ch == " " else 0xA0 + ord(ch) - ord("A") for ch in text)
+
+    def _rom(self, groups: dict[int, bytes]) -> bytes:
+        rom = bytearray(0x20000)
+        table, strings = 0x18000, 0x19000  # bank 1 (HiROM $C1xxxx)
+        for code, raw in groups.items():
+            rom[table + 2 * code : table + 2 * code + 2] = (strings & 0xFFFF).to_bytes(2, "little")
+            rom[strings] = len(raw)
+            rom[strings + 1 : strings + 1 + len(raw)] = raw
+            strings += 1 + len(raw)
+        return bytes(rom)
+
+    def _config(self, rom: bytes, **dictionary) -> MemoryConfig:
+        return make_config(
+            command="read_core_ram",
+            text={
+                "address": None,
+                "cursor": {"address": 0x231, "size": 3},
+                "rom": {"sha1": hashlib.sha1(rom).hexdigest(), "mapping": "hirom"},
+                "rom_dictionary": {"first_code": 0x21, "last_code": 0x24, "pointers": 0xC18000}
+                | dictionary,
+                "table": self.LETTERS,
+            },
+        )
+
+    def test_letter_groups_come_from_the_rom(self, tmp_path) -> None:
+        groups = {0x21: self.ct("THE "), 0x22: self.ct("OU"), 0x23: b"\x05", 0x24: b""}
+        rom = self._rom(groups)
+        path = tmp_path / "game.sfc"
+        path.write_bytes(rom)
+        watcher = make_watcher(self._config(rom), FakeMemory(), rom_path=path)
+        decoder = watcher._decoder
+        # 0x23 holds a byte the table does not know and 0x24 is empty: both left out
+        assert decoder.letters(b"\x21") == "THE "
+        assert decoder.letters(b"\x23") is None and decoder.letters(b"\x24") is None
+        assert decoder.decode(b"\x21\xb3\x22\xa2\xa7\x00") == "THE TOUCH"
+
+    def test_the_table_file_wins_over_the_rom(self, tmp_path) -> None:
+        rom = self._rom({0x21: self.ct("THE")})
+        path = tmp_path / "game.sfc"
+        path.write_bytes(rom)
+        config = self._config(rom)
+        config.text.table["21"] = "A"
+        watcher = make_watcher(config, FakeMemory(), rom_path=path)
+        assert watcher._decoder.letters(b"\x21") == "A"
+
+    def test_needs_the_rom(self) -> None:
+        with pytest.raises(ValidationError, match="rom_dictionary needs text.rom"):
+            MemoryTextConfig(
+                cursor={"address": 0x231, "size": 3},
+                rom_dictionary={"first_code": 0x21, "last_code": 0x9F, "pointers": 0xDEF9BE},
+            )
+
+    def test_shipped_chrono_trigger_table_holds_no_game_text(self) -> None:
+        from pathlib import Path
+
+        from retrobard.adapters.producers.memory_text import load_tbl
+
+        profiles = Path(__file__).resolve().parents[2] / "profiles"
+        table = load_tbl(profiles / "chrono_trigger.tbl")
+        assert not [code for code in table if len(code) == 1 and 0x21 <= code[0] <= 0x9F]

@@ -265,6 +265,26 @@ class RomFile(BaseModel):
     mapping: Literal["hirom", "lorom", "linear"] = "hirom"
 
 
+class RomDictionary(BaseModel):
+    """Groups of letters the game stores as a single byte, read from the game's
+    own table in the ROM when it is opened, so no game text ships with RetroBard.
+
+    The table holds a 2-byte pointer for every code from code 0 on; each pointer
+    leads, in the same bank, to the group's length followed by its letters."""
+
+    first_code: int = Field(ge=0, le=0xFF)
+    last_code: int = Field(ge=0, le=0xFF)
+    # Console address of the pointer table (bank included)
+    pointers: int = Field(ge=0, le=MAX_MEMORY_ADDRESS)
+    max_length: int = Field(default=32, ge=1, le=255)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> "RomDictionary":
+        if self.last_code < self.first_code:
+            raise ValueError("rom_dictionary.last_code comes before first_code")
+        return self
+
+
 class MemoryTextConfig(BaseModel):
     # Where the message is, one of:
     #  address: a fixed RAM buffer holding it
@@ -277,6 +297,8 @@ class MemoryTextConfig(BaseModel):
     cursor: MemoryPointer | None = None
     # Read the text from the ROM file instead of RAM (pointer and cursor only)
     rom: RomFile | None = None
+    # Letter groups read from the ROM's own table and added to the text table
+    rom_dictionary: RomDictionary | None = None
     # Bytes below this value are script commands, not text. Table entries that
     # start with one (such as a "insert hero name" code) still count as text.
     command_below: int = Field(default=0x7F, ge=0, le=0x100)
@@ -309,6 +331,8 @@ class MemoryTextConfig(BaseModel):
             raise ValueError("set exactly one of text.address, text.pointer and text.cursor")
         if self.rom is not None and self.address is not None:
             raise ValueError("text.rom needs text.pointer or text.cursor, not text.address")
+        if self.rom_dictionary is not None and self.rom is None:
+            raise ValueError("text.rom_dictionary needs text.rom")
         return self
 
     @field_validator("table_file")

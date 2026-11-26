@@ -37,6 +37,8 @@ memory:
     rom:
       sha1: de5822f4f2f7a55acb8926d4c0eaa63d5d989312
       mapping: hirom
+    # Codes 21-9F are letter groups from the game's own table ($DEF9BE)
+    rom_dictionary: {first_code: 0x21, last_code: 0x9F, pointers: 0xDEF9BE}
     table_file: chrono_trigger.tbl
     newline_codes: ["05", "06"]
 dialogue_rules:

@@ -27,7 +27,7 @@ from pathlib import Path
 
 from retrobard.adapters.producers.memory_text import TextDecoder
 from retrobard.adapters.producers.udp_listener import is_loopback
-from retrobard.config import MemoryConfig, MemoryValue, RomFile
+from retrobard.config import MemoryConfig, MemoryValue, RomDictionary, RomFile
 from retrobard.domain.models import DialogueEvent, EventType
 from retrobard.domain.status import StatusKind, StatusSink, console_status, report
 
@@ -165,6 +165,25 @@ class RomImage:
         pass
 
 
+def read_rom_dictionary(rom: RomImage, dictionary: RomDictionary, decoder: TextDecoder) -> dict[bytes, str]:
+    """The game's letter groups (code -> text), read from its ROM. A group that
+    is empty, too long or holds a byte the table does not know is left out."""
+    bank = dictionary.pointers & 0xFF0000
+    entries: dict[bytes, str] = {}
+    for code in range(dictionary.first_code, dictionary.last_code + 1):
+        pointer = rom.read(dictionary.pointers + 2 * code, 2)
+        if len(pointer) < 2:
+            continue
+        address = bank | int.from_bytes(pointer, "little")
+        length = rom.read(address, 1)
+        if not length or not 0 < length[0] <= dictionary.max_length:
+            continue
+        text = decoder.letters(rom.read(address + 1, length[0]))
+        if text:
+            entries[bytes([code])] = text
+    return entries
+
+
 class RetroArchMemoryWatcher:
     """EventProducer that polls the dialogue text in memory and speaks each new message."""
 
@@ -188,6 +207,10 @@ class RetroArchMemoryWatcher:
         self._text_source = (
             RomImage(rom_path, config.text.rom) if config.text.rom else self._client
         )
+        if config.text.rom_dictionary and isinstance(self._text_source, RomImage):
+            self._decoder.add_entries(
+                read_rom_dictionary(self._text_source, config.text.rom_dictionary, self._decoder)
+            )
         self._debug = debug
         self._status = status
         self._stop_event = threading.Event()

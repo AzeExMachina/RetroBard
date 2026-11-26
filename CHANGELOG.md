@@ -32,7 +32,14 @@ app's "Check for updates" window shows.
   next to Save letters. Discarded shapes are not taught; they come back if they are
   collected again.
 
+### Fixed
+- Pressing Start with a custom voice server (such as Kokoro) after opening the
+  Server settings could freeze or close the app ("Fatal Python error: Aborted").
+  This was a bug in Python 3.13.0; RetroBard is now built with Python 3.13.16.
+
 ### Changed
+- The Voice list on the Play tab now starts with the custom server (such as the
+  free Kokoro server), then ElevenLabs, then Silent test.
 - Every voice RetroBard ships is now an ElevenLabs Infinity voice, which
   ElevenLabs never retires (apart from voices designed for one character). The
   narrator stays Adam, in his Infinity version. With a paid ElevenLabs plan you can

@@ -32,10 +32,12 @@ from retrobard.gui.api_key_dialog import ApiKeyDialog
 from retrobard.gui.custom_server_dialog import CustomServerDialog
 from retrobard.gui.state import AppState, StatusBridge
 
+# The free voice server first; ElevenLabs needs an account and, for most voices,
+# a paid plan
 VOICE_CHOICES = [
-    ("Silent test (no voice, no credits)", TTSBackend.MOCK),
-    ("ElevenLabs (AI voices)", TTSBackend.ELEVENLABS),
     ("Custom server (OpenAI-compatible)", TTSBackend.CUSTOM),
+    ("ElevenLabs (AI voices)", TTSBackend.ELEVENLABS),
+    ("Silent test (no voice, no credits)", TTSBackend.MOCK),
 ]
 SOURCE_CHOICES = [
     ("The game window", InputSource.OCR),

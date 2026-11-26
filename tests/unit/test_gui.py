@@ -16,6 +16,7 @@ from test_session import SilentPlayer
 
 from retrobard.adapters.ocr.glyph_reader import GlyphFont
 from retrobard.app import session as session_module
+from retrobard.app.session import TTSBackend
 from retrobard.config import AppSettings, GameProfile, NormRect, WindowBinding
 from retrobard.domain.status import StatusEvent, StatusKind
 from retrobard.gui.main import MainWindow
@@ -115,8 +116,18 @@ class TestMainWindow:
 
 
 class TestPlayPage:
+    def test_voice_list_puts_the_free_server_first(self, window: MainWindow) -> None:
+        combo = window.play_page.voice_combo
+        assert [combo.itemData(i) for i in range(combo.count())] == [
+            TTSBackend.CUSTOM,
+            TTSBackend.ELEVENLABS,
+            TTSBackend.MOCK,
+        ]
+        assert window.play_page._backend() == TTSBackend.CUSTOM
+
     def test_start_and_stop_from_the_button(self, qapp, window: MainWindow) -> None:
         play = window.play_page
+        play.voice_combo.setCurrentIndex(play.voice_combo.findData(TTSBackend.MOCK))
         play.source_combo.setCurrentIndex(1)  # UDP: needs no game window
 
         play.toggle()
@@ -130,6 +141,7 @@ class TestPlayPage:
 
     def test_a_start_problem_is_shown_instead_of_crashing(self, qapp, window: MainWindow) -> None:
         play = window.play_page
+        play.voice_combo.setCurrentIndex(play.voice_combo.findData(TTSBackend.MOCK))
         play.source_combo.setCurrentIndex(0)  # the game window, but none is linked
 
         play.start()
@@ -257,6 +269,7 @@ class TestOptionsPage:
 
     def test_a_running_session_picks_up_the_change(self, qapp, window: MainWindow) -> None:
         play = window.play_page
+        play.voice_combo.setCurrentIndex(play.voice_combo.findData(TTSBackend.MOCK))
         play.source_combo.setCurrentIndex(1)  # UDP: needs no game window
         play.toggle()
         assert _wait_for(qapp, lambda: play.running)
@@ -302,7 +315,9 @@ class TestTesterFeatures:
         from retrobard.credentials import stored_api_key
         from retrobard.gui.api_key_dialog import ApiKeyDialog
 
-        assert window.play_page.key_label.text() == "No key yet"
+        play = window.play_page
+        play.voice_combo.setCurrentIndex(play.voice_combo.findData(TTSBackend.ELEVENLABS))
+        assert play.key_label.text() == "No key yet"
         dialog = ApiKeyDialog(window)
         dialog.key_edit.setText("has space")
         dialog.save()
@@ -313,8 +328,6 @@ class TestTesterFeatures:
         assert stored_api_key() == "sk_abc"
 
     def test_voice_button_follows_the_chosen_service(self, window: MainWindow) -> None:
-        from retrobard.app.session import TTSBackend
-
         play = window.play_page
         play.voice_combo.setCurrentIndex(play.voice_combo.findData(TTSBackend.CUSTOM))
         assert play.key_button.text() == "Server..."

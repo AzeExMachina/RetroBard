@@ -213,9 +213,9 @@ def draw_voice_choice(p: QPainter, palette: QPalette) -> None:
     """The Play tab's voice list, open, with the button that sets up each service."""
     inside = _window_frame(p, QRect(30, 6, 380, 208), "Play - Voice", palette)
     rows = [
-        ("Silent test (no voice, no credits)", None, "free"),
+        ("Custom server (OpenAI-compatible)", "Server...", "Kokoro (free), OpenAI..."),
         ("ElevenLabs (AI voices)", "ElevenLabs key...", "your account"),
-        ("Custom server (OpenAI-compatible)", "Server...", "OpenAI, Kokoro..."),
+        ("Silent test (no voice, no credits)", None, "free"),
     ]
     for i, (label, button, note) in enumerate(rows):
         row = QRect(inside.x() + 12, inside.y() + 12 + i * 58, inside.width() - 24, 50)
@@ -231,7 +231,7 @@ def draw_voice_choice(p: QPainter, palette: QPalette) -> None:
         if button:
             rect = QRect(row.right() - 118, row.y() + 22, 108, 22)
             _small_button(p, rect, button, palette)
-            if i == len(rows) - 1:
+            if i == 0:
                 _cursor(p, rect.right() - 20, rect.bottom() - 8)
 
 
@@ -331,13 +331,13 @@ STEPS = [
         "Choose where the voices come from",
         "Besides <b>Silent test</b>, the <b>Voice</b> list on the <b>Play</b> tab offers two "
         "voice services, each set up with the button next to it:<br>"
-        "&bull; <b>ElevenLabs</b>: natural AI voices from <b>your own account</b> (a free one "
-        "is enough to try it). Press <b>ElevenLabs key...</b>, follow the link to create a "
-        "key with Text to Speech access, and paste it.<br>"
-        "&bull; <b>Custom server</b>: any service that speaks the OpenAI speech API, such as "
-        "OpenAI, or a <b>free server on your own computer</b> like Kokoro-FastAPI. Press "
-        "<b>Server...</b>, pick a preset, adjust the address and voice, and press "
-        "<b>Test</b>.<br>"
+        "&bull; <b>Custom server</b>: a <b>free server on your own computer</b> like "
+        "Kokoro-FastAPI, or any other service that speaks the OpenAI speech API, such as "
+        "OpenAI. Press <b>Server...</b>, pick a preset, adjust the address and voice, and "
+        "press <b>Test</b>.<br>"
+        "&bull; <b>ElevenLabs</b>: natural AI voices from <b>your own account</b> (most "
+        "voices need a paid plan). Press <b>ElevenLabs key...</b>, follow the link to "
+        "create a key with Text to Speech access, and paste it.<br>"
         "Keys are kept in Windows Credential Manager on this computer.",
         draw_voice_choice,
     ),

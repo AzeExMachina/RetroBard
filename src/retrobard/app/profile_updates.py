@@ -102,6 +102,18 @@ def add_shipped_characters(voices: VoicesConfig, shipped: VoicesConfig) -> list[
     return added
 
 
+def add_shipped_custom_voices(profile: GameProfile, shipped: GameProfile) -> bool:
+    """Gives `profile` the custom-server voices `shipped` has: all of them when
+    it has none, otherwise only the characters it is missing. Returns whether
+    anything was added."""
+    if shipped.custom_voices is None:
+        return False
+    if profile.custom_voices is None:
+        profile.custom_voices = shipped.custom_voices.model_copy(deep=True)
+        return True
+    return bool(add_shipped_characters(profile.custom_voices, shipped.custom_voices))
+
+
 def update_profiles(bundled: Path | None, profiles_dir: Path) -> list[str]:
     """Updates the voices in every profile in `profiles_dir` and saves the ones
     that changed. Returns the games it updated.
@@ -120,6 +132,7 @@ def update_profiles(bundled: Path | None, profiles_dir: Path) -> list[str]:
             if shipped_path is not None and not same_folder and shipped_path.exists():
                 shipped = GameProfile.from_yaml(shipped_path)
                 changed = bool(add_shipped_characters(profile.voices, shipped.voices)) or changed
+                changed = add_shipped_custom_voices(profile, shipped) or changed
             if changed:
                 profile.save_to_yaml(path)
                 updated.append(path.stem)

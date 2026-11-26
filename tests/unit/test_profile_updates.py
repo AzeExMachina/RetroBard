@@ -161,6 +161,55 @@ class TestUpdateProfiles:
     def test_missing_folder(self, tmp_path: Path) -> None:
         assert update_profiles(None, tmp_path / "nowhere") == []
 
+    def test_adds_shipped_custom_voices(self, tmp_path: Path) -> None:
+        shipped_dir, user_dir = tmp_path / "shipped", tmp_path / "user"
+        _write(shipped_dir / "chrono_trigger.yaml", SHIPPED_PROFILE + SHIPPED_CUSTOM)
+        user_path = _write(user_dir / "chrono_trigger.yaml", USER_PROFILE)
+
+        assert update_profiles(shipped_dir, user_dir) == ["chrono_trigger"]
+
+        custom = GameProfile.from_yaml(user_path).custom_voices
+        assert custom is not None
+        assert custom.default_narrator == "bm_george"
+        assert custom.characters == {"FROG": "bm_fable", "MAGUS": "am_fenrir"}
+        assert custom.male_pool == ["am_michael"]
+        # Second start: nothing left to add
+        assert update_profiles(shipped_dir, user_dir) == []
+
+    def test_keeps_the_users_custom_voices(self, tmp_path: Path) -> None:
+        shipped_dir, user_dir = tmp_path / "shipped", tmp_path / "user"
+        _write(shipped_dir / "chrono_trigger.yaml", SHIPPED_PROFILE + SHIPPED_CUSTOM)
+        own_custom = "custom_voices:\n  default_narrator: af_heart\n  characters:\n    FROG: my_frog\n"
+        user_path = _write(user_dir / "chrono_trigger.yaml", USER_PROFILE + own_custom)
+
+        update_profiles(shipped_dir, user_dir)
+
+        custom = GameProfile.from_yaml(user_path).custom_voices
+        assert custom is not None
+        assert custom.default_narrator == "af_heart"
+        assert custom.characters == {"FROG": "my_frog", "MAGUS": "am_fenrir"}
+
+
+SHIPPED_CUSTOM = """\
+custom_voices:
+  default_narrator: bm_george
+  characters:
+    FROG: bm_fable
+    MAGUS: am_fenrir
+  male_pool: [am_michael]
+"""
+
+
+class TestShippedProfilesLoad:
+    def test_shipped_profiles_have_kokoro_voices(self) -> None:
+        profiles = Path(__file__).resolve().parents[2] / "profiles"
+        for name in ("chrono_trigger", "secret_of_mana"):
+            profile = GameProfile.from_yaml(profiles / f"{name}.yaml")
+            assert profile.custom_voices is not None
+            voices = profile.voices_for_custom_server("af_heart")
+            assert voices.default_narrator == "bm_george"
+            assert voices.female_pool and voices.male_pool
+
 
 class TestShippedVoicesStayAvailable:
     """Default voices stop working on 2026-12-31: nothing RetroBard ships may use one."""

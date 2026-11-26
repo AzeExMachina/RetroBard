@@ -201,6 +201,32 @@ class TestLettersPage:
         assert len(page._cards) == 2
         assert "at least one" in page.save_label.text()
 
+    def test_discarding_a_shape_drops_it_without_teaching(self, window: MainWindow) -> None:
+        page = window.letters_page
+        page.show_frames([_draw(["AAB", "A"])])
+        misread, kept = page._cards
+        misread.discard_button.click()
+
+        assert page._cards == [kept]
+        assert page.save_button.isEnabled()
+        kept.edit.setText("B")
+        page.save_letters()
+
+        font = GlyphFont.load(window.state.settings.profiles_dir / "chrono_trigger.font.json")
+        assert sorted(font.glyphs.values()) == ["B"]  # the discarded shape is not taught
+        assert page._cards == []
+
+    def test_discard_all_drops_every_shape(self, window: MainWindow) -> None:
+        page = window.letters_page
+        page.show_frames([_draw(["AB", ""])])
+        page.discard_all_button.click()
+
+        assert page._cards == []
+        assert not page.save_button.isEnabled()
+        assert not page.discard_all_button.isEnabled()
+        font = GlyphFont.load(window.state.settings.profiles_dir / "chrono_trigger.font.json")
+        assert not font.glyphs
+
 
 class TestOptionsPage:
     def _saved(self, window: MainWindow) -> GameProfile:

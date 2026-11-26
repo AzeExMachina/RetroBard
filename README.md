@@ -32,6 +32,31 @@ The voices are AI-generated.
 
 Window capture is currently Windows-only.
 
+## Emulator display settings
+
+RetroBard reads the letters pixel by pixel, so the emulator must draw the game
+sharp, unfiltered and large. The best setup is **integer scaling** (the picture zoomed
+by a whole number, 3x or more), **square pixels**, and **no filters or shaders**.
+
+In **Snes9x** (Video > Display Configuration):
+
+| Setting | Value |
+| --- | --- |
+| Stretch Image | **On** (without it Snes9x draws the game at 1x, whatever the window size) |
+| Maintain Aspect Ratio | **On, 8:7** (8:7 means square pixels; 4:3 stretches them unevenly) |
+| Integer Scaling | **On** |
+| Bilinear Filtering | Off |
+| Output Image Processing | None |
+| Hi Res | None |
+| NTSC Filter Scanlines | Off |
+| Use Shader | Off |
+| Extend Height of SNES Image | Off (the game must show exactly 224 lines) |
+| Show Frame Rate, Display messages inside SNES image | Off |
+
+Then make the window big enough for at least 3x (a game area of 768x672). A maximised
+window on a 1440p monitor gives 5x; fullscreen gives 6x. Each time you change these
+settings, select the dialogue box again on the Setup tab.
+
 ## Calibration
 
 Start the game/emulator, then link its window and select the dialogue box:

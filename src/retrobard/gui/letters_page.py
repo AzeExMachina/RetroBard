@@ -76,11 +76,19 @@ class ShapeCard(QWidget):
         self.edit.setPlaceholderText("letter")
         self.ignore = QCheckBox("Not a letter")
         self.ignore.toggled.connect(lambda checked: self.edit.setDisabled(checked))
+        # For a shape that was clearly misread (two letters run together, a letter
+        # cut in half): drop it without teaching anything
+        self.discard_button = QPushButton("Discard")
+        self.discard_button.setToolTip(
+            "Drop this shape without teaching it, e.g. when it is clearly misread. "
+            "It comes back if it is collected again."
+        )
         answer = QHBoxLayout()
         answer.addWidget(self.edit)
         answer.addWidget(self.ignore)
         answer.addWidget(QLabel(f"seen {shape.count}x"))
         answer.addStretch(1)
+        answer.addWidget(self.discard_button)
         layout = QVBoxLayout(self)
         layout.addWidget(picture)
         layout.addLayout(answer)
@@ -121,7 +129,9 @@ class LettersPage(QWidget):
         self.help_label = QLabel(
             "Press Collect dialogue, then play the game and step through some dialogue. "
             "Afterwards each letter shape RetroBard does not know is shown in yellow: "
-            "type which character it is. Tick 'Not a letter' for cursors and icons."
+            "type which character it is. Tick 'Not a letter' for cursors and icons. "
+            "Press Discard on a shape that is clearly misread (letters run together or "
+            "cut off): it is dropped without teaching anything."
         )
         self.help_label.setWordWrap(True)
 
@@ -134,9 +144,16 @@ class LettersPage(QWidget):
 
         self.save_button = QPushButton("Save letters")
         self.save_button.setEnabled(False)
+        self.discard_all_button = QPushButton("Discard all")
+        self.discard_all_button.setToolTip(
+            "Drop every shape still shown without teaching any, e.g. after collecting "
+            "with the wrong emulator settings."
+        )
+        self.discard_all_button.setEnabled(False)
         self.save_label = QLabel()
         save_row = QHBoxLayout()
         save_row.addWidget(self.save_label, 1)
+        save_row.addWidget(self.discard_all_button)
         save_row.addWidget(self.save_button)
 
         # ---- sending the letters you taught to the developer
@@ -157,6 +174,7 @@ class LettersPage(QWidget):
 
         self.collect_button.clicked.connect(self.toggle_collecting)
         self.save_button.clicked.connect(self.save_letters)
+        self.discard_all_button.clicked.connect(self.discard_all)
         # clicked passes a `checked` bool; keep it away from `destination`.
         self.export_button.clicked.connect(lambda: self.export_letters())
         self._progress.connect(self.progress_label.setText)
@@ -272,19 +290,42 @@ class LettersPage(QWidget):
             return
         self.progress_label.setText(note + f". {len(plan.shapes)} new letter shape(s) to name.")
 
-        for index, shape in enumerate(plan.shapes):
+        cards = []
+        for shape in plan.shapes:
             card = ShapeCard(shape)
-            self._cards.append(card)
-            self.cards_grid.addWidget(card, index // CARDS_PER_ROW, index % CARDS_PER_ROW)
-        self.save_button.setEnabled(True)
+            card.discard_button.clicked.connect(lambda _checked=False, c=card: self.discard_card(c))
+            cards.append(card)
+        self._set_cards(cards)
         self.save_label.setText("")
 
-    def _clear_cards(self) -> None:
+    def _set_cards(self, cards: list[ShapeCard]) -> None:
+        """Shows `cards` in the grid; cards no longer listed are deleted."""
         for card in self._cards:
             self.cards_grid.removeWidget(card)
-            card.deleteLater()
-        self._cards = []
-        self.save_button.setEnabled(False)
+            if card not in cards:
+                card.deleteLater()
+        self._cards = cards
+        for index, card in enumerate(cards):
+            self.cards_grid.addWidget(card, index // CARDS_PER_ROW, index % CARDS_PER_ROW)
+        self.save_button.setEnabled(bool(cards))
+        self.discard_all_button.setEnabled(bool(cards))
+
+    def _clear_cards(self) -> None:
+        self._set_cards([])
+
+    def discard_card(self, card: ShapeCard) -> None:
+        """Drops one shape without teaching it."""
+        self._set_cards([c for c in self._cards if c is not card])
+        self.save_label.setText(
+            "Shape discarded." + (f" {len(self._cards)} still unnamed." if self._cards else "")
+        )
+
+    def discard_all(self) -> None:
+        """Drops every shape still shown without teaching any."""
+        count = len(self._cards)
+        self._clear_cards()
+        if count:
+            self.save_label.setText(f"Discarded {count} shape(s); nothing was taught.")
 
     # ---------------------------------------------------------------------- saving
 
@@ -302,16 +343,7 @@ class LettersPage(QWidget):
             self.save_label.setText("Type at least one letter first.")
             return
         self._game_font.save()
-
-        for card in self._cards:
-            self.cards_grid.removeWidget(card)
-            if card not in remaining:
-                card.deleteLater()
-        self._cards = remaining
-        for index, card in enumerate(self._cards):
-            self.cards_grid.addWidget(card, index // CARDS_PER_ROW, index % CARDS_PER_ROW)
-
-        self.save_button.setEnabled(bool(self._cards))
+        self._set_cards(remaining)
         self.save_label.setText(
             f"Saved {named} letter shape(s)."
             + (f" {len(self._cards)} still unnamed." if self._cards else "")

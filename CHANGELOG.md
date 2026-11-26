@@ -17,6 +17,20 @@ app's "Check for updates" window shows.
   "POPOI:..." on a later line), each is spoken in their own voice, one after the
   other. If the game adds the second character to a box already spoken, only the
   new part is said.
+- Chrono Trigger and Secret of Mana now come with voices for the free Kokoro voice
+  server, so every Chrono Trigger character keeps their own voice on a custom
+  server. Profiles you already have get these voices on the next start; Kokoro
+  voices you set yourself stay as they are.
+- Secret of Mana now has voices for 27 characters, from the three heroes to
+  Thanatos and the Dark Lich, on both ElevenLabs and Kokoro.
+- The Quick Start and README list the Snes9x display settings that let RetroBard
+  read the text reliably: Stretch Image with 8:7 aspect ratio and Integer Scaling
+  on, filters and shaders off. Without Stretch Image, Snes9x shows the game at its
+  smallest size, which causes many missed lines.
+- The Letters tab has a **Discard** button on each shape, for shapes that are
+  clearly misread (letters run together or cut off), and a **Discard all** button
+  next to Save letters. Discarded shapes are not taught; they come back if they are
+  collected again.
 
 ### Changed
 - Every voice RetroBard ships is now an ElevenLabs Infinity voice, which

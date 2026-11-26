@@ -3,10 +3,10 @@ window:
   process_name: snes9x-x64.exe
 ocr:
   region:
-    x: 0.1491
-    y: 0.5873
-    w: 0.706
-    h: 0.2967
+    x: 0.2117
+    y: 0.5962
+    w: 0.575
+    h: 0.3166
   speaker_region:
     x: 0.1145
     y: 0.6131
@@ -148,3 +148,120 @@ voices:
   - ktkP7Nsj67dw2zcplQYt
   - 10NkTYmU7tSz3Kkl3Lex
   - FrS6cKLB1wg4WYgPa9GW
+custom_voices:
+  default_narrator: bm_george
+  narrate_unnamed: false
+  characters:
+    CRONO: am_michael
+    FROG:
+      voice_id: bm_fable
+      stability: 0.5
+      similarity_boost: 0.75
+      style: 0.0
+      speed: 0.95
+      pitch_semitones: 0.0
+      effect: none
+      use_speaker_boost: true
+    MOM: af_sarah
+    CHANCELLOR:
+      voice_id: am_puck
+      stability: 0.5
+      similarity_boost: 0.75
+      style: 0.0
+      speed: 1.1
+      pitch_semitones: 0.0
+      effect: none
+      use_speaker_boost: true
+    ROBO:
+      voice_id: am_michael
+      stability: 0.5
+      similarity_boost: 0.75
+      style: 0.0
+      speed: 0.95
+      pitch_semitones: -0.5
+      effect: robot
+      use_speaker_boost: true
+    MARLE:
+      voice_id: af_bella
+      stability: 0.5
+      similarity_boost: 0.75
+      style: 0.0
+      speed: 1.08
+      pitch_semitones: 0.0
+      effect: none
+      use_speaker_boost: true
+    QUEEN:
+      voice_id: af_bella
+      stability: 0.5
+      similarity_boost: 0.75
+      style: 0.0
+      speed: 1.08
+      pitch_semitones: 0.0
+      effect: none
+      use_speaker_boost: true
+    LUCCA:
+      voice_id: af_kore
+      stability: 0.5
+      similarity_boost: 0.75
+      style: 0.0
+      speed: 1.14
+      pitch_semitones: 0.0
+      effect: none
+      use_speaker_boost: true
+    MAGUS:
+      voice_id: am_fenrir
+      stability: 0.5
+      similarity_boost: 0.75
+      style: 0.0
+      speed: 0.92
+      pitch_semitones: -1.0
+      effect: none
+      use_speaker_boost: true
+    AYLA:
+      voice_id: af_aoede
+      stability: 0.5
+      similarity_boost: 0.75
+      style: 0.0
+      speed: 1.12
+      pitch_semitones: 0.0
+      effect: none
+      use_speaker_boost: true
+    GATO:
+      voice_id: am_puck
+      stability: 0.5
+      similarity_boost: 0.75
+      style: 0.0
+      speed: 0.92
+      pitch_semitones: -3.5
+      effect: robot
+      use_speaker_boost: true
+    YAKRA:
+      voice_id: am_fenrir
+      stability: 0.5
+      similarity_boost: 0.75
+      style: 0.0
+      speed: 0.85
+      pitch_semitones: -5.0
+      effect: monster
+      use_speaker_boost: true
+    IMP:
+      voice_id: am_puck
+      stability: 0.5
+      similarity_boost: 0.75
+      style: 0.0
+      speed: 1.12
+      pitch_semitones: 4.0
+      effect: none
+      use_speaker_boost: true
+  female_pool:
+  - af_heart
+  - af_nicole
+  - bf_emma
+  - af_sarah
+  - bf_isabella
+  male_pool:
+  - am_michael
+  - am_puck
+  - bm_george
+  - am_fenrir
+  - bm_fable

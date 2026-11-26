@@ -130,8 +130,8 @@ def draw_emulator(p: QPainter, palette: QPalette) -> None:
     x, y = inside.x() + 20, inside.y() + 22
     _checkbox(p, x, y, False, "Smooth / bilinear filter", palette)
     _checkbox(p, x, y + 32, False, "Shader (CRT, scanlines)", palette)
-    _checkbox(p, x, y + 64, True, "Keep aspect ratio", palette)
-    _checkbox(p, x, y + 96, True, "Integer scaling (if offered)", palette)
+    _checkbox(p, x, y + 64, True, "Stretch, keep aspect ratio", palette)
+    _checkbox(p, x, y + 96, True, "Integer scaling", palette)
 
 
 def draw_link_window(p: QPainter, palette: QPalette) -> None:
@@ -295,7 +295,12 @@ STEPS = [
         "Open your emulator and load the game. In the emulator's display settings, "
         "<b>turn off smoothing filters and shaders</b> and keep the picture's aspect "
         "ratio. RetroBard reads the game's letters pixel by pixel, so a blurred "
-        "picture makes them unreadable.",
+        "or tiny picture makes them unreadable. Make the window big enough for the "
+        "game to be zoomed 3x or more.<br>"
+        "In <b>Snes9x</b> (Video &gt; Display Configuration): tick <b>Stretch Image</b>, "
+        "<b>Maintain Aspect Ratio</b> set to <b>8:7</b> and <b>Integer Scaling</b>; untick "
+        "<b>Bilinear Filtering</b>, <b>NTSC Filter Scanlines</b>, <b>Use Shader</b> and "
+        "<b>Extend Height of SNES Image</b>.",
         draw_emulator,
     ),
     Step(
